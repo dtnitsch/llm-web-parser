@@ -3,7 +3,7 @@ urls:
   - https://en.wikipedia.org/wiki/Main_Page
   - https://www.apple.com/
   - https://www.notarealwebsite.com/ # 500 error
-  - http://192.0.2.1/ # will cause a context deadline timeout in go
+#  - http://192.0.2.1/ # will cause a context deadline timeout in go
 
 mapreduce:
   reduce_keys: ["word", "count"]
