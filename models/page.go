@@ -6,7 +6,12 @@ import "strings"
 type Page struct {
 	URL     string         `json:"url"`
 	Title   string         `json:"title"`
-	Content []Section `json:"content"` // top-level sections
+
+	// Full mode
+	Content []Section `json:"content,omitempty"`
+
+	// Cheap mode
+	FlatContent []ContentBlock `json:"flat_content,omitempty"`
 }
 
 // Section represents a logical section of a document,
@@ -46,8 +51,11 @@ type ContentBlock struct {
 	Table *Table `json:"table,omitempty"`
 	Code  *Code  `json:"code,omitempty"`
 
-	// NEW: extracted links scoped to this block
+	// extracted links scoped to this block
 	Links []Link `json:"links,omitempty"`	
+
+	// LLM confidence Scores
+	Confidence float64 `json:"confidence"`
 }
 
 

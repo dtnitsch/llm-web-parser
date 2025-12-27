@@ -56,7 +56,7 @@ func worker(id int, f *fetcher.Fetcher, s *storage.Storage, p *parser.Parser, wg
 		}
 
 		// Parse the HTML into a structured Page object
-		page, err = p.ParseToStructured(job.URL, html.String())
+		page, err = p.ParseToStructured(job.URL, html.String(), models.ParseModeFull)
 		if err != nil {
 			log.Printf("Worker %d: Error parsing HTML for %s: %s", id, job.URL, err)
 			continue

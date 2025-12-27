@@ -13,16 +13,22 @@ import (
 
 type Parser struct{}
 
-func (p *Parser) ParseToStructured(rawURL, html string) (*models.Page, error) {
+func (p *Parser) ParseToStructured(rawURL, html string, mode models.ParseMode) (*models.Page, error) {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, err
 	}
 
-	article, err := readability.NewParser().Parse(strings.NewReader(html), parsedURL)
+	readParser := readability.NewParser()
+	article, err := readParser.Parse(strings.NewReader(html), parsedURL)
 	if err != nil {
 		return nil, err
 	}
+
+	if mode == models.ParseModeCheap {
+		return p.parseCheap(rawURL, article)
+	}
+
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(article.Content))
 	if err != nil {
@@ -57,10 +63,12 @@ func (p *Parser) ParseToStructured(rawURL, html string) (*models.Page, error) {
 			return
 		}
 
+		links := extractLinks(s)
+
 		// ---- HEADINGS ----
 		if strings.HasPrefix(tag, "h") {
 			level := int(tag[1] - '0')
-
+			
 			sectionCounter++
 			blockCounter++
 
@@ -68,14 +76,14 @@ func (p *Parser) ParseToStructured(rawURL, html string) (*models.Page, error) {
 				ID:   fmt.Sprintf("block-%d", blockCounter),
 				Type: tag,
 				Text: text,
-				Links: extractLinks(s),
+				Links: links,
+				Confidence: 0.7, 
 			}
 
 			newSection := models.Section{
 				ID:      fmt.Sprintf("section-%d", sectionCounter),
 				Level:   level,
 				Heading: &headingBlock,
-				Links: extractLinks(s),
 			}
 
 			// Pop until we find parent
@@ -104,7 +112,8 @@ func (p *Parser) ParseToStructured(rawURL, html string) (*models.Page, error) {
 				ID:    fmt.Sprintf("block-%d", blockCounter),
 				Type:  "table",
 				Table: table,
-				Links: extractLinks(s),
+				Links: links, 
+				Confidence: 0.95, 
 			})
 			return
 		}
@@ -119,6 +128,7 @@ func (p *Parser) ParseToStructured(rawURL, html string) (*models.Page, error) {
 					Content: s.Text(),
 				},
 				Links: extractLinks(s),
+				Confidence: 0.95,
 			})
 			return
 		}
@@ -130,6 +140,7 @@ func (p *Parser) ParseToStructured(rawURL, html string) (*models.Page, error) {
 			Type: tag,
 			Text: text,
 			Links: extractLinks(s),
+			Confidence: computeConfidence(text, len(links), tag),
 		})
 	})
 
@@ -142,6 +153,46 @@ func (p *Parser) ParseToStructured(rawURL, html string) (*models.Page, error) {
 	return page, nil
 }
 
+func (p *Parser) parseCheap(
+	rawURL string,
+	article readability.Article,
+) (*models.Page, error) {
+
+	doc, err := goquery.NewDocumentFromReader(
+		strings.NewReader(article.Content),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var blocks []models.ContentBlock
+	blockCounter := 0
+
+	doc.Find("h1,h2,h3,p").Each(func(_ int, s *goquery.Selection) {
+		text := normalizeText(s.Text())
+		if text == "" {
+			return
+		}
+
+		blockCounter++
+		links := extractLinks(s)
+
+		blocks = append(blocks, models.ContentBlock{
+			ID:         fmt.Sprintf("block-%d", blockCounter),
+			Type:       goquery.NodeName(s),
+			Text:       text,
+			Links:      links,
+			Confidence: 0.5, // neutral
+		})
+	})
+
+	return &models.Page{
+		URL:   rawURL,
+		Title: normalizeText(article.Title),
+		// Flat content, no sections
+		FlatContent: blocks,
+	}, nil
+}
 
 func extractTable(s *goquery.Selection) *models.Table {
 	var headers []string
@@ -200,6 +251,41 @@ func extractLinks(s *goquery.Selection) []models.Link {
 	})
 
 	return links
+}
+
+func computeConfidence(text string, links int, blockType string) float64 {
+	if blockType == "code" || blockType == "table" {
+		return 0.95 // structured content is usually high-signal
+	}
+
+	words := len(strings.Fields(text))
+	if words == 0 {
+		return 0.0
+	}
+
+	score := 0.4
+
+	// Text density
+	switch {
+	case words > 120:
+		score += 0.4
+	case words > 40:
+		score += 0.25
+	case words > 15:
+		score += 0.1
+	}
+
+	// Link penalty
+	score -= float64(links) * 0.05
+
+	// Clamp
+	if score < 0 {
+		return 0
+	}
+	if score > 1 {
+		return 1
+	}
+	return score
 }
 
 
