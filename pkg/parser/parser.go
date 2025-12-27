@@ -2,131 +2,166 @@ package parser
 
 import (
 	"bufio"
+	"fmt"
 	"net/url"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/dtnitsch/llm-web-parser/models"
-	"github.com/go-shiori/go-readability" // Changed import
+	"github.com/go-shiori/go-readability"
 )
 
 type Parser struct{}
 
-// ParseToStructured uses the go-readability library to extract the main article
-// content and then parses that clean content into a structured Page object.
 func (p *Parser) ParseToStructured(rawURL, html string) (*models.Page, error) {
-	// Parse the URL to pass to the readability parser
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, err
 	}
 
-	// Let go-readability find the main content
-	readabilityParser := readability.NewParser()
-	article, err := readabilityParser.Parse(strings.NewReader(html), parsedURL) // Corrected: use method and pass *url.URL
+	article, err := readability.NewParser().Parse(strings.NewReader(html), parsedURL)
 	if err != nil {
 		return nil, err
 	}
 
-	// Now, use goquery on the *clean* HTML content provided by readability
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(article.Content)) // Changed to field access
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(article.Content))
 	if err != nil {
 		return nil, err
 	}
 
-	var content []models.ContentBlock
-	// Find all content-bearing tags we care about within the distilled content
-    doc.Find("h1,h2,h3,h4,p,li,table,pre").Each(func(i int, s *goquery.Selection) {
-      tag := goquery.NodeName(s)
+	var (
+		rootSections   []models.Section
+		sectionStack   []*models.Section
+		sectionCounter int
+		blockCounter   int
+	)
 
-      switch tag {
+	// Helper: get current section (or create implicit root)
+	currentSection := func() *models.Section {
+		if len(sectionStack) == 0 {
+			sectionCounter++
+			s := models.Section{
+				ID:    fmt.Sprintf("section-%d", sectionCounter),
+				Level: 0,
+			}
+			rootSections = append(rootSections, s)
+			sectionStack = append(sectionStack, &rootSections[len(rootSections)-1])
+		}
+		return sectionStack[len(sectionStack)-1]
+	}
 
-      case "table":
-        table := extractTable(s)
-        if table != nil {
-          content = append(content, models.ContentBlock{
-            Type:  "table",
-            Table: table,
-          })
-        }
+	doc.Find("h1,h2,h3,h4,h5,h6,p,li,pre,code,table").Each(func(i int, s *goquery.Selection) {
+		tag := goquery.NodeName(s)
+		text := normalizeText(s.Text())
+		if text == "" && tag != "table" {
+			return
+		}
 
-      case "pre":
-        code := extractCodeBlock(s)
-        if code != nil {
-          content = append(content, models.ContentBlock{
-            Type: "code",
-            Code: code,
-          })
-        }
+		// ---- HEADINGS ----
+		if strings.HasPrefix(tag, "h") {
+			level := int(tag[1] - '0')
 
-      default:
-        text := normalizeText(s.Text())
-        if text != "" {
-          content = append(content, models.ContentBlock{
-            Type: tag,
-            Text: text,
-          })
-        }
-      }
-    })
+			sectionCounter++
+			blockCounter++
 
+			headingBlock := models.ContentBlock{
+				ID:   fmt.Sprintf("block-%d", blockCounter),
+				Type: tag,
+				Text: text,
+				Links: extractLinks(s),
+			}
+
+			newSection := models.Section{
+				ID:      fmt.Sprintf("section-%d", sectionCounter),
+				Level:   level,
+				Heading: &headingBlock,
+				Links: extractLinks(s),
+			}
+
+			// Pop until we find parent
+			for len(sectionStack) > 0 && sectionStack[len(sectionStack)-1].Level >= level {
+				sectionStack = sectionStack[:len(sectionStack)-1]
+			}
+
+			if len(sectionStack) == 0 {
+				rootSections = append(rootSections, newSection)
+				sectionStack = append(sectionStack, &rootSections[len(rootSections)-1])
+			} else {
+				parent := sectionStack[len(sectionStack)-1]
+				parent.Children = append(parent.Children, newSection)
+				sectionStack = append(sectionStack, &parent.Children[len(parent.Children)-1])
+			}
+
+			return
+		}
+
+		// ---- TABLES ----
+		if tag == "table" {
+			blockCounter++
+			table := extractTable(s)
+
+			currentSection().Blocks = append(currentSection().Blocks, models.ContentBlock{
+				ID:    fmt.Sprintf("block-%d", blockCounter),
+				Type:  "table",
+				Table: table,
+				Links: extractLinks(s),
+			})
+			return
+		}
+
+		// ---- CODE ----
+		if tag == "pre" || tag == "code" {
+			blockCounter++
+			currentSection().Blocks = append(currentSection().Blocks, models.ContentBlock{
+				ID:   fmt.Sprintf("block-%d", blockCounter),
+				Type: "code",
+				Code: &models.Code{
+					Content: s.Text(),
+				},
+				Links: extractLinks(s),
+			})
+			return
+		}
+
+		// ---- TEXT BLOCKS ----
+		blockCounter++
+		currentSection().Blocks = append(currentSection().Blocks, models.ContentBlock{
+			ID:   fmt.Sprintf("block-%d", blockCounter),
+			Type: tag,
+			Text: text,
+			Links: extractLinks(s),
+		})
+	})
 
 	page := &models.Page{
 		URL:     rawURL,
-		Title:   normalizeText(article.Title), // Changed to field access
-		Content: content,
+		Title:   normalizeText(article.Title),
+		Content: rootSections,
 	}
 
 	return page, nil
 }
 
-// normalizeText cleans up a string by trimming space and removing excess newlines.
-func normalizeText(input string) string {
-	var b strings.Builder
-	b.Grow(len(input))
-	scanner := bufio.NewScanner(strings.NewReader(input))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" {
-			// Write the line and a single space for separation
-			b.WriteString(line)
-			b.WriteString(" ")
-		}
-	}
-	// Return the result, trimming the final space
-	return strings.TrimSpace(b.String())
-}
 
 func extractTable(s *goquery.Selection) *models.Table {
 	var headers []string
 	var rows [][]string
 
-	// Try explicit headers
-	s.Find("thead tr th").Each(func(i int, th *goquery.Selection) {
-		headers = append(headers, normalizeText(th.Text()))
-	})
-
-	// Fallback: first row
-	if len(headers) == 0 {
-		s.Find("tr").First().Find("th,td").Each(func(i int, cell *goquery.Selection) {
-			headers = append(headers, normalizeText(cell.Text()))
-		})
-	}
-
-	// Body rows
-	s.Find("tbody tr").Each(func(i int, tr *goquery.Selection) {
+	s.Find("tr").Each(func(i int, tr *goquery.Selection) {
 		var row []string
-		tr.Find("td").Each(func(j int, td *goquery.Selection) {
+
+		tr.Find("th").Each(func(_ int, th *goquery.Selection) {
+			headers = append(headers, normalizeText(th.Text()))
+		})
+
+		tr.Find("td").Each(func(_ int, td *goquery.Selection) {
 			row = append(row, normalizeText(td.Text()))
 		})
+
 		if len(row) > 0 {
 			rows = append(rows, row)
 		}
 	})
-
-	if len(headers) == 0 && len(rows) == 0 {
-		return nil
-	}
 
 	return &models.Table{
 		Headers: headers,
@@ -134,24 +169,37 @@ func extractTable(s *goquery.Selection) *models.Table {
 	}
 }
 
-func extractCodeBlock(s *goquery.Selection) *models.Code {
-	codeSel := s.Find("code")
-	if codeSel.Length() == 0 {
-		return nil
+func normalizeText(input string) string {
+	var b strings.Builder
+	scanner := bufio.NewScanner(strings.NewReader(input))
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			b.WriteString(line)
+			b.WriteString(" ")
+		}
 	}
 
-	code := strings.TrimSpace(codeSel.Text())
-	if code == "" {
-		return nil
-	}
+	return strings.TrimSpace(b.String())
+}
 
-	lang, _ := codeSel.Attr("class")
-	lang = strings.TrimPrefix(lang, "language-")
+func extractLinks(s *goquery.Selection) []models.Link {
+	var links []models.Link
 
-	return &models.Code{
-		Language: lang,
-		Content:  code,
-	}
+	s.Find("a[href]").Each(func(_ int, a *goquery.Selection) {
+		href, _ := a.Attr("href")
+		text := normalizeText(a.Text())
+
+		if href != "" {
+			links = append(links, models.Link{
+				Href: href,
+				Text: text,
+			})
+		}
+	})
+
+	return links
 }
 
 
