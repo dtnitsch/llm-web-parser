@@ -1,0 +1,13 @@
+urls:
+  - https://www.gutenberg.org/files/11/11-h/11-h.htm
+  - https://en.wikipedia.org/wiki/Main_Page
+  - https://www.apple.com/
+  - https://www.notarealwebsite.com/ # 500 error
+  - http://192.0.2.1/ # will cause a context deadline timeout in go
+
+mapreduce:
+  reduce_keys: ["word", "count"]
+
+analytics:
+  keyword_count:
+    keyword_threshold: 10

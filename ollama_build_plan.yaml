@@ -1,0 +1,142 @@
+# ---
+# project_brief: "LLM Web Parser"
+# target_llm: "Ollama (Llama 3.1 8b)"
+# author_llm: "Gemini"
+# creation_date: "2025-12-27"
+# version: "1.0"
+# purpose: |
+#   A detailed project brief and step-by-step build plan for a Go-based web
+#   content processing and analytics engine. This file is designed to be parsed
+#   and executed by a large language model to build the project.
+# ---
+
+# 1. Project Overview
+# This section provides a high-level summary of the project, its goals,
+# and core components.
+overview:
+  summary: |
+    A high-performance Go application designed to fetch, parse, and analyze
+    web content using a concurrent, pipelined architecture and an in-memory
+    MapReduce framework for data aggregation.
+  language: "Go"
+  core_features:
+    - "Concurrent Web Content Fetching: Downloads multiple web pages simultaneously to maximize throughput."
+    - "HTML/JavaScript Stripping: Cleans raw web pages to extract clean, usable plain text."
+    - "Artifact Storage: Saves both raw and processed content to disk for auditing, caching, and reuse."
+    - "Pluggable Analytics Pipeline: Allows for the easy addition of new text analysis functions without changing core logic."
+    - "In-Memory MapReduce Framework: Provides a powerful and classic pattern for aggregating results from the analytics phase."
+  key_goals:
+    - "Efficiency: The application must be highly concurrent to process many URLs quickly."
+    - "Robustness: The system must handle network errors, timeouts, and bad HTML gracefully."
+    - "Extensibility: The architecture should make it simple to add new analytics or change storage methods."
+    - "Correctness: The data processing pipeline and analytics must be accurate and verifiable through tests."
+
+# 2. Recommended Technology & Libraries
+# A list of suggested Go packages to ensure a high-quality, idiomatic implementation.
+recommended_libraries:
+  - name: "go-query"
+    url: "github.com/PuerkitoBio/go-query"
+    purpose: "For powerful and convenient server-side HTML parsing, similar to jQuery."
+    rationale: "While the standard library's `html` package is capable, `go-query` simplifies complex DOM traversal and data extraction."
+  - name: "Viper"
+    url: "github.com/spf13/viper"
+    purpose: "For versatile configuration management from files (YAML/JSON), environment variables, or remote sources."
+    rationale: "Avoids hardcoding settings like timeouts or worker counts, making the application configurable and adaptable to different environments."
+  - name: "testify"
+    url: "github.com/stretchr/testify"
+    purpose: "Provides assertion helpers (`assert`, `require`) and mocking capabilities to make testing more fluent and comprehensive."
+    rationale: "Improves test readability and provides powerful tools over the standard `testing` package alone."
+
+# 3. Step-by-Step Build Plan
+# A detailed, sequential plan for constructing the application. Each step includes
+# a clear title, description, and the intended outcome.
+build_plan:
+  - phase: "Project Setup & Structure"
+    step: 1
+    title: "Initialize Go Module"
+    description: "Create a new directory named 'llm-web-parser' and run the command `go mod init llm-web-parser` inside it."
+    outcome: "A `go.mod` file is created, which will track the project's dependencies."
+  - phase: "Project Setup & Structure"
+    step: 2
+    title: "Create Directory Structure"
+    description: |
+      Establish a clean, idiomatic Go project layout to separate concerns. Create the following directories:
+      - `/cmd/worker`: Main application entry point.
+      - `/pkg/fetcher`: For web content downloading logic.
+      - `/pkg/parser`: For stripping HTML/JS and extracting text.
+      - `/pkg/storage`: For saving files to disk.
+      - `/pkg/analytics`: For text analysis functions (e.g., word count).
+      - `/pkg/mapreduce`: The core MapReduce framework.
+      - `/configs`: For configuration files.
+    outcome: "The project has a well-organized directory structure, making it easy to navigate and maintain."
+
+  - phase: "Web Fetching & Stripping"
+    step: 3
+    title: "Implement a Robust Fetcher"
+    description: |
+      In the `/pkg/fetcher` directory, create a service that uses Go's standard `net/http` package.
+      The client must have configurable timeouts for connections and requests.
+      This service should use a worker pool pattern (goroutines and channels) to fetch multiple URLs concurrently.
+    outcome: "A concurrent service that can download content from a list of URLs efficiently and safely."
+  - phase: "Web Fetching & Stripping"
+    step: 4
+    title: "Create a Content Parser"
+    description: |
+      In the `/pkg/parser` directory, create a function that takes raw HTML content as a byte slice or string.
+      Use the `go-query` library to parse the HTML and extract only the text content from the body, discarding script, style, and other non-content tags.
+    outcome: "A function that can reliably convert raw HTML into clean, plain text."
+  - phase: "Web Fetching & Stripping"
+    step: 5
+    title: "Implement Artifact Storage"
+    description: |
+      In the `/pkg/storage` directory, create a service that can write content to disk.
+      It should have methods to save both the original raw HTML and the stripped plain text.
+      Use a consistent naming scheme for files, such as a hash of the source URL, to prevent naming conflicts.
+    outcome: "A storage utility that can save raw and processed artifacts for later use or auditing."
+
+  - phase: "Analytics Pipeline"
+    step: 6
+    title: "Define an Analytics Interface"
+    description: |
+      In the `/pkg/analytics` directory, define a simple Go interface for an 'Analytic'.
+      For example: `type Analytic interface { Execute(text string) (interface{}, error) }`.
+      This will allow you to treat different analytics functions polymorphically.
+    outcome: "A flexible interface that decouples the main pipeline from specific analytics implementations."
+  - phase: "Analytics Pipeline"
+    step: 7
+    title: "Implement Keyword Frequency Analytic"
+    description: |
+      In the `/pkg/analytics` directory, create a struct that implements your `Analytic` interface.
+      This first implementation will perform keyword frequency counting. Its `Execute` method will take text, split it into words, and return a `map[string]int` of word counts.
+    outcome: "A concrete analytics module that can count word frequencies in a given text."
+
+  - phase: "MapReduce Framework"
+    step: 8
+    title: "Define Core MapReduce Functions"
+    description: |
+      In the `/pkg/mapreduce` directory, define the function signatures for your Map and Reduce operations.
+      For the word count example, these could be:
+      - `Map(text string) map[string]int`
+      - `Reduce(word string, counts []int) int`
+    outcome: "Clear, defined function types that form the core of the MapReduce framework."
+  - phase: "MapReduce Framework"
+    step: 9
+    title: "Build the MapReduce Coordinator"
+    description: |
+      In `/pkg/mapreduce`, create a coordinator that orchestrates the Map, Shuffle, and Reduce stages.
+      1.  **Map Stage:** Concurrently apply the `Map` function to a list of input texts.
+      2.  **Shuffle Stage:** Collect all results and group the intermediate values by key in a central map (e.g., `map[string][]int`).
+      3.  **Reduce Stage:** Concurrently apply the `Reduce` function to each key and its list of values.
+      The coordinator should manage the concurrency and data flow between these stages.
+    outcome: "A functioning, in-memory MapReduce engine capable of parallel data aggregation."
+
+  - phase: "Project Finalization"
+    step: 10
+    title: "Externalize Configuration"
+    description: "Create a `config.yaml` file in the `/configs` directory. Use the Viper library to load settings like HTTP timeouts, the number of concurrent workers, and artifact storage paths into a Go struct."
+    outcome: "A flexible application that can be configured without changing any code."
+  - phase: "Project Finalization"
+    step: 11
+    title: "Write Unit Tests"
+    description: "For each package, create `_test.go` files. Use the `testify/assert` library to write clear and comprehensive unit tests for the parser, analytics functions, and the MapReduce coordinator to ensure all components work as expected."
+    outcome: "A well-tested, reliable, and maintainable codebase."
