@@ -1,13 +1,44 @@
 ---
-steps:
-  - [] Refactor for Concurrency
-  - [ ] Extract comprehensive structural metadata: Add fields for content type (heuristic based), detected language, estimated reading time, and total word count to the `models.Page` struct.
-  - [x] Implement link graph extraction: Parse and store all internal and external links, including their anchor text and the section they appear in.
-  - [ ] Enhance MapReduce for advanced word statistics (e.g., TF-IDF or normalized frequencies).
-  - [ ] Add boilerplate removal signals: Record and label identified boilerplate sections (e.g., navigation, footer) that were removed.
-  - [ ] Implement citation anchors/offsets: Add unique identifiers or byte offsets to content blocks for precise referencing.
-  - [ ] Generate content quality signals: Calculate and include metrics like text density, HTML-to-text ratio, etc.
-  - [ ] Implement content change detection: Add hashing or other fingerprinting for content blocks.
+todos:
+  # Architecture
+  - [x] Concurrent fetch + parse pipeline
+  - [x] Deterministic MapReduce corpus aggregation
 
-checkbox: '[ ]'
-done_checkbox: '[x]'
+  # Page-level metadata
+  - [x] Extract comprehensive structural metadata
+  - [x] Detect content type heuristically
+  - [x] Detect language with confidence
+  - [x] Estimate reading time and word count
+  - [x] Track extraction mode and quality
+
+  # Link analysis
+  - [x] Extract internal and external links with anchors
+
+  # Remaining high-value additions (local, deterministic)
+  - [ ] Record boilerplate removal signals
+      # removed blocks count
+      # removal ratio
+      # removal source (readability, heuristics)
+
+  - [ ] Add citation anchors to content blocks
+      # DOM path
+      # byte offset or source range
+
+  - [ ] Generate explicit content quality signals
+      # text density
+      # link density
+      # heading/body ratio
+      # average words per block
+
+  - [ ] Add stable content fingerprinting
+      # block-level hashes
+      # page-level content hash
+
+  - [ ] Enable content change detection across runs
+      # hash comparison
+      # change classification (minor/major)
+
+notes:
+  - TF-IDF and weighting are corpus-level concerns and intentionally deferred
+  - All tasks remain deterministic, local, and LLM-free
+
