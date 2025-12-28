@@ -14,15 +14,8 @@ import (
 type Parser struct{}
 
 func (p *Parser) ParseToStructured(req models.ParseRequest) (*models.Page, error) {
-	mode := req.Mode
-	if mode == 0 {
-		mode = models.ParseModeCheap
-	}
-
-	// Escalate automatically if needed
-	if req.RequireCitations {
-		mode = models.ParseModeFull
-	}
+	// Cheap or Full mode
+	mode := models.ResolveParseMode(req)
 
 	parsedURL, err := url.Parse(req.URL)
 	if err != nil {
@@ -36,7 +29,7 @@ func (p *Parser) ParseToStructured(req models.ParseRequest) (*models.Page, error
 	}
 
 	if mode == models.ParseModeCheap {
-		return p.parseCheap(req.URL, article)
+		return p.parseCheap(req.URL, article, parsedURL)
 	}
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(article.Content))
@@ -72,7 +65,7 @@ func (p *Parser) ParseToStructured(req models.ParseRequest) (*models.Page, error
 			return
 		}
 
-		links := extractLinks(s)
+		links := extractLinks(s, parsedURL)
 
 		// ---- HEADINGS ----
 		if strings.HasPrefix(tag, "h") {
@@ -136,7 +129,7 @@ func (p *Parser) ParseToStructured(req models.ParseRequest) (*models.Page, error
 				Code: &models.Code{
 					Content: s.Text(),
 				},
-				Links: extractLinks(s),
+				Links: extractLinks(s, parsedURL),
 				Confidence: 0.95,
 			})
 			return
@@ -148,7 +141,7 @@ func (p *Parser) ParseToStructured(req models.ParseRequest) (*models.Page, error
 			ID:   fmt.Sprintf("block-%d", blockCounter),
 			Type: tag,
 			Text: text,
-			Links: extractLinks(s),
+			Links: extractLinks(s, parsedURL),
 			Confidence: computeConfidence(text, len(links), tag),
 		})
 	})
@@ -162,10 +155,7 @@ func (p *Parser) ParseToStructured(req models.ParseRequest) (*models.Page, error
 	return page, nil
 }
 
-func (p *Parser) parseCheap(
-	rawURL string,
-	article readability.Article,
-) (*models.Page, error) {
+func (p *Parser) parseCheap(rawURL string, article readability.Article, parsedUrl *url.URL) (*models.Page, error) {
 
 	doc, err := goquery.NewDocumentFromReader(
 		strings.NewReader(article.Content),
@@ -184,7 +174,7 @@ func (p *Parser) parseCheap(
 		}
 
 		blockCounter++
-		links := extractLinks(s)
+		links := extractLinks(s, parsedUrl)
 
 		blocks = append(blocks, models.ContentBlock{
 			ID:         fmt.Sprintf("block-%d", blockCounter),
@@ -244,22 +234,41 @@ func normalizeText(input string) string {
 	return strings.TrimSpace(b.String())
 }
 
-func extractLinks(s *goquery.Selection) []models.Link {
+func extractLinks(s *goquery.Selection,	pageURL *url.URL) []models.Link {
 	var links []models.Link
 
 	s.Find("a[href]").Each(func(_ int, a *goquery.Selection) {
 		href, _ := a.Attr("href")
 		text := normalizeText(a.Text())
-
-		if href != "" {
-			links = append(links, models.Link{
-				Href: href,
-				Text: text,
-			})
+		if href == "" {
+			return
 		}
+
+		links = append(links, models.Link{
+			Href: href,
+			Text: text,
+			Type: classifyLink(href, pageURL),
+		})
 	})
 
 	return links
+}
+
+func classifyLink(href string, pageURL *url.URL) models.LinkType {
+	if strings.HasPrefix(href, "#") || strings.HasPrefix(href, "/") {
+		return models.LinkInternal
+	}
+
+	u, err := url.Parse(href)
+	if err != nil || u.Host == "" {
+		return models.LinkInternal
+	}
+
+	if u.Host == pageURL.Host {
+		return models.LinkInternal
+	}
+
+	return models.LinkExternal
 }
 
 func computeConfidence(text string, links int, blockType string) float64 {
@@ -297,4 +306,21 @@ func computeConfidence(text string, links int, blockType string) float64 {
 	return score
 }
 
+func resolveParseMode(req models.ParseRequest) models.ParseMode {
+	// Explicit mode wins unless unsafe
+	if req.Mode != 0 {
+		if req.Mode == models.ParseModeCheap && req.RequireCitations {
+			return models.ParseModeFull
+		}
+		return req.Mode
+	}
+
+	// Infer intent
+	if req.RequireCitations {
+		return models.ParseModeFull
+	}
+
+	// Default
+	return models.ParseModeCheap
+}
 
