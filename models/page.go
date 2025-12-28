@@ -2,6 +2,13 @@ package models
 
 import "strings"
 
+type LinkType string
+
+const (
+	LinkInternal LinkType = "internal"
+	LinkExternal LinkType = "external"
+)
+
 // Page represents the structured content of a single web page.
 type Page struct {
 	URL     string         `json:"url"`
@@ -34,11 +41,11 @@ type Code struct {
 	Content  string `json:"content"`
 }
 
-
 // Link represents a hyperlink found in a content block.
 type Link struct {
 	Href string `json:"href"`
 	Text string `json:"text"`
+	Type LinkType `json:"type"`
 }
 
 // ContentBlock represents a semantic block of content on a page.
