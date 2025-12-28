@@ -4,6 +4,7 @@ go 1.25.3
 
 require (
 	github.com/PuerkitoBio/goquery v1.11.0
+	github.com/abadojack/whatlanggo v1.0.1
 	github.com/go-shiori/go-readability v0.0.0-20251205110129-5db1dc9836f0
 	gopkg.in/yaml.v3 v3.0.1
 )

@@ -56,7 +56,7 @@ func worker(id int, f *fetcher.Fetcher, s *storage.Storage, p *parser.Parser, wg
 		}
 
 		// Parse the HTML into a structured Page object
-		page, err = p.ParseToStructured(models.ParseRequest{
+		page, err = p.Parse(models.ParseRequest{
 			URL: job.URL,
 			HTML: html.String(),
 			Mode: models.ParseModeFull,

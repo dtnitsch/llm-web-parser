@@ -13,8 +13,7 @@ import (
 
 type Parser struct{}
 
-func (p *Parser) ParseToStructured(req models.ParseRequest) (*models.Page, error) {
-	// Cheap or Full mode
+func (p *Parser) Parse(req models.ParseRequest) (*models.Page, error) {
 	mode := models.ResolveParseMode(req)
 
 	parsedURL, err := url.Parse(req.URL)
@@ -28,9 +27,39 @@ func (p *Parser) ParseToStructured(req models.ParseRequest) (*models.Page, error
 		return nil, err
 	}
 
-	if mode == models.ParseModeCheap {
-		return p.parseCheap(req.URL, article, parsedURL)
+	var page *models.Page
+
+	switch mode {
+	case models.ParseModeCheap:
+		page, err = p.parseCheap(req.URL, article, parsedURL)
+		if err != nil {
+			return nil, err
+		}
+
+		page.ComputeMetadata()
+
+		// 🔑 escalation logic lives HERE
+		if page.Metadata.ExtractionQuality == "low" {
+			return p.parseFull(req.URL, article, parsedURL)
+		}
+
+	case models.ParseModeFull:
+		page, err = p.parseFull(req.URL, article, parsedURL)
+		if err != nil {
+			return nil, err
+		}
+
+		page.ComputeMetadata()
 	}
+
+	return page, nil
+}
+
+func (p *Parser) parseFull(
+	rawURL string,
+	article readability.Article,
+	parsedURL *url.URL,
+) (*models.Page, error) {
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(article.Content))
 	if err != nil {
@@ -44,7 +73,6 @@ func (p *Parser) ParseToStructured(req models.ParseRequest) (*models.Page, error
 		blockCounter   int
 	)
 
-	// Helper: get current section (or create implicit root)
 	currentSection := func() *models.Section {
 		if len(sectionStack) == 0 {
 			sectionCounter++
@@ -58,7 +86,7 @@ func (p *Parser) ParseToStructured(req models.ParseRequest) (*models.Page, error
 		return sectionStack[len(sectionStack)-1]
 	}
 
-	doc.Find("h1,h2,h3,h4,h5,h6,p,li,pre,code,table").Each(func(i int, s *goquery.Selection) {
+	doc.Find("h1,h2,h3,h4,h5,h6,p,li,pre,code,table").Each(func(_ int, s *goquery.Selection) {
 		tag := goquery.NodeName(s)
 		text := normalizeText(s.Text())
 		if text == "" && tag != "table" {
@@ -67,19 +95,18 @@ func (p *Parser) ParseToStructured(req models.ParseRequest) (*models.Page, error
 
 		links := extractLinks(s, parsedURL)
 
-		// ---- HEADINGS ----
+		// HEADINGS
 		if strings.HasPrefix(tag, "h") {
 			level := int(tag[1] - '0')
-			
 			sectionCounter++
 			blockCounter++
 
 			headingBlock := models.ContentBlock{
-				ID:   fmt.Sprintf("block-%d", blockCounter),
-				Type: tag,
-				Text: text,
-				Links: links,
-				Confidence: 0.7, 
+				ID:         fmt.Sprintf("block-%d", blockCounter),
+				Type:       tag,
+				Text:       text,
+				Links:      links,
+				Confidence: 0.7,
 			}
 
 			newSection := models.Section{
@@ -88,7 +115,6 @@ func (p *Parser) ParseToStructured(req models.ParseRequest) (*models.Page, error
 				Heading: &headingBlock,
 			}
 
-			// Pop until we find parent
 			for len(sectionStack) > 0 && sectionStack[len(sectionStack)-1].Level >= level {
 				sectionStack = sectionStack[:len(sectionStack)-1]
 			}
@@ -101,56 +127,54 @@ func (p *Parser) ParseToStructured(req models.ParseRequest) (*models.Page, error
 				parent.Children = append(parent.Children, newSection)
 				sectionStack = append(sectionStack, &parent.Children[len(parent.Children)-1])
 			}
-
 			return
 		}
 
-		// ---- TABLES ----
+		// TABLES
 		if tag == "table" {
 			blockCounter++
-			table := extractTable(s)
-
 			currentSection().Blocks = append(currentSection().Blocks, models.ContentBlock{
-				ID:    fmt.Sprintf("block-%d", blockCounter),
-				Type:  "table",
-				Table: table,
-				Links: links, 
-				Confidence: 0.95, 
-			})
-			return
-		}
-
-		// ---- CODE ----
-		if tag == "pre" || tag == "code" {
-			blockCounter++
-			currentSection().Blocks = append(currentSection().Blocks, models.ContentBlock{
-				ID:   fmt.Sprintf("block-%d", blockCounter),
-				Type: "code",
-				Code: &models.Code{
-					Content: s.Text(),
-				},
-				Links: extractLinks(s, parsedURL),
+				ID:         fmt.Sprintf("block-%d", blockCounter),
+				Type:       "table",
+				Table:      extractTable(s),
+				Links:      links,
 				Confidence: 0.95,
 			})
 			return
 		}
 
-		// ---- TEXT BLOCKS ----
+		// CODE
+		if tag == "pre" || tag == "code" {
+			blockCounter++
+			currentSection().Blocks = append(currentSection().Blocks, models.ContentBlock{
+				ID:         fmt.Sprintf("block-%d", blockCounter),
+				Type:       "code",
+				Code:       &models.Code{Content: s.Text()},
+				Links:      links,
+				Confidence: 0.95,
+			})
+			return
+		}
+
+		// TEXT
 		blockCounter++
 		currentSection().Blocks = append(currentSection().Blocks, models.ContentBlock{
-			ID:   fmt.Sprintf("block-%d", blockCounter),
-			Type: tag,
-			Text: text,
-			Links: extractLinks(s, parsedURL),
+			ID:         fmt.Sprintf("block-%d", blockCounter),
+			Type:       tag,
+			Text:       text,
+			Links:      links,
 			Confidence: computeConfidence(text, len(links), tag),
 		})
 	})
 
 	page := &models.Page{
-		URL:     req.URL,
+		URL:     rawURL,
 		Title:   normalizeText(article.Title),
 		Content: rootSections,
 	}
+
+	page.Metadata.ExtractionMode = "full"
+	page.Metadata.ExtractionQuality = "ok"
 
 	return page, nil
 }
@@ -167,7 +191,12 @@ func (p *Parser) parseCheap(rawURL string, article readability.Article, parsedUr
 	var blocks []models.ContentBlock
 	blockCounter := 0
 
-	doc.Find("h1,h2,h3,p").Each(func(_ int, s *goquery.Selection) {
+	doc.Find("h1,h2,h3,p,div,pre,blockquote").Each(func(_ int, s *goquery.Selection) {
+		// Skip container divs with children to avoid duplication
+		if s.Children().Length() > 0 && goquery.NodeName(s) == "div" {
+			return
+		}
+
 		text := normalizeText(s.Text())
 		if text == "" {
 			return
@@ -185,12 +214,21 @@ func (p *Parser) parseCheap(rawURL string, article readability.Article, parsedUr
 		})
 	})
 
-	return &models.Page{
-		URL:   rawURL,
-		Title: normalizeText(article.Title),
-		// Flat content, no sections
+	quality := "ok"
+	if len(blocks) < 5 {
+		quality = "low"
+	}
+
+	page := &models.Page{
+		URL:         rawURL,
+		Title:       normalizeText(article.Title),
 		FlatContent: blocks,
-	}, nil
+	}
+
+	page.Metadata.ExtractionMode = "cheap"
+	page.Metadata.ExtractionQuality = quality
+
+	return page, nil
 }
 
 func extractTable(s *goquery.Selection) *models.Table {

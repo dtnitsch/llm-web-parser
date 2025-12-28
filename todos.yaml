@@ -1,6 +1,13 @@
 ---
 steps:
   - [] Refactor for Concurrency
+  - [ ] Extract comprehensive structural metadata: Add fields for content type (heuristic based), detected language, estimated reading time, and total word count to the `models.Page` struct.
+  - [x] Implement link graph extraction: Parse and store all internal and external links, including their anchor text and the section they appear in.
+  - [ ] Enhance MapReduce for advanced word statistics (e.g., TF-IDF or normalized frequencies).
+  - [ ] Add boilerplate removal signals: Record and label identified boilerplate sections (e.g., navigation, footer) that were removed.
+  - [ ] Implement citation anchors/offsets: Add unique identifiers or byte offsets to content blocks for precise referencing.
+  - [ ] Generate content quality signals: Calculate and include metrics like text density, HTML-to-text ratio, etc.
+  - [ ] Implement content change detection: Add hashing or other fingerprinting for content blocks.
 
 checkbox: '[ ]'
 done_checkbox: '[x]'
