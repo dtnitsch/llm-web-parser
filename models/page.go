@@ -1,11 +1,11 @@
 package models
 
 import (
+	"math"
 	"strings"
-	
-	"github.com/abadojack/whatlanggo"
-)
 
+	lingua "github.com/pemistahl/lingua-go"
+)
 
 type LinkType string
 
@@ -13,6 +13,11 @@ const (
 	LinkInternal LinkType = "internal"
 	LinkExternal LinkType = "external"
 )
+
+var languageDetector = lingua.NewLanguageDetectorBuilder().
+	FromAllLanguages().
+	WithMinimumRelativeDistance(0.2).
+	Build()
 
 // Page represents the structured content of a single web page.
 type Page struct {
@@ -131,11 +136,10 @@ func (p *Page) ComputeMetadata() {
 
 	p.Metadata.BlockCount = len(blocks)
 	p.Metadata.WordCount = len(strings.Fields(text))
-	p.Metadata.EstimatedReadMin =
-		float64(p.Metadata.WordCount) / 225.0
+	p.Metadata.EstimatedReadMin = math.Round((float64(p.Metadata.WordCount)/225.0)*10) / 10
 
 	p.Metadata.SectionCount = p.countSectionsRecursive(p.Content)
-	p.Metadata.Language = p.detectLanguage(text)
+	p.Metadata.Language, p.Metadata.LanguageConfidence = p.detectLanguage(text)
 	p.Metadata.ContentType = detectContentType(p)
 
 	p.Metadata.Computed = true
@@ -264,13 +268,37 @@ func countBlocksByType(p *Page, types ...string) int {
 	return count
 }
 
-
-func (p *Page) detectLanguage(text string) string {
-	info := whatlanggo.Detect(text)
-	if info.IsReliable() {
-		return info.Lang.Iso6391()
+func (p *Page) detectLanguage(text string) (string, float64) {
+	if len(text) < 100 {
+		return "unknown", 0.0
 	}
-	return "unknown"
+
+	lang, exists := languageDetector.DetectLanguageOf(text)
+	if !exists {
+		return "unknown", 0.0
+	}
+
+	iso := lang.IsoCode639_1().String()
+	if iso == "" {
+		return "unknown", 0.0
+	}
+
+	// Heuristic confidence based on text length
+	words := len(strings.Fields(text))
+
+	var confidence float64
+	switch {
+	case words > 5000:
+		confidence = 0.99
+	case words > 1000:
+		confidence = 0.95
+	case words > 300:
+		confidence = 0.9
+	default:
+		confidence = 0.75
+	}
+
+	return strings.ToLower(iso), confidence
 }
 
 func detectContentType(p *Page) string {

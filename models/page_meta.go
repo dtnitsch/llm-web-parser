@@ -4,6 +4,7 @@ type PageMetadata struct {
 	// Classification
 	ContentType string `json:"content_type"` // article, documentation, blog, landing, forum, unknown
 	Language    string `json:"language"`     // ISO-639-1 if possible (e.g. "en")
+	LanguageConfidence float64 `json:"language_confidence,omitempty"`
 
 	// Size & cost signals
 	WordCount        int     `json:"word_count"`
