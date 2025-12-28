@@ -13,22 +13,31 @@ import (
 
 type Parser struct{}
 
-func (p *Parser) ParseToStructured(rawURL, html string, mode models.ParseMode) (*models.Page, error) {
-	parsedURL, err := url.Parse(rawURL)
+func (p *Parser) ParseToStructured(req models.ParseRequest) (*models.Page, error) {
+	mode := req.Mode
+	if mode == 0 {
+		mode = models.ParseModeCheap
+	}
+
+	// Escalate automatically if needed
+	if req.RequireCitations {
+		mode = models.ParseModeFull
+	}
+
+	parsedURL, err := url.Parse(req.URL)
 	if err != nil {
 		return nil, err
 	}
 
 	readParser := readability.NewParser()
-	article, err := readParser.Parse(strings.NewReader(html), parsedURL)
+	article, err := readParser.Parse(strings.NewReader(req.HTML), parsedURL)
 	if err != nil {
 		return nil, err
 	}
 
 	if mode == models.ParseModeCheap {
-		return p.parseCheap(rawURL, article)
+		return p.parseCheap(req.URL, article)
 	}
-
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(article.Content))
 	if err != nil {
@@ -145,7 +154,7 @@ func (p *Parser) ParseToStructured(rawURL, html string, mode models.ParseMode) (
 	})
 
 	page := &models.Page{
-		URL:     rawURL,
+		URL:     req.URL,
 		Title:   normalizeText(article.Title),
 		Content: rootSections,
 	}
@@ -272,7 +281,7 @@ func computeConfidence(text string, links int, blockType string) float64 {
 	case words > 40:
 		score += 0.25
 	case words > 15:
-		score += 0.1
+		score += 0.1 
 	}
 
 	// Link penalty
