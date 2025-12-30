@@ -60,6 +60,7 @@ func worker(id int, f *fetcher.Fetcher, s *storage.Storage, p *parser.Parser, wg
 			URL: job.URL,
 			HTML: html.String(),
 			Mode: models.ParseModeFull,
+			//Mode: models.ParseModeCheap,
 		})
 		if err != nil {
 			log.Printf("Worker %d: Error parsing HTML for %s: %s", id, job.URL, err)

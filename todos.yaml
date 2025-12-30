@@ -13,14 +13,29 @@ priorities:
 performance_benchmark:
   test_date: 2025-12-30
   test_case: "40 ML research URLs (Wikipedia, frameworks, research labs, courses)"
-  results:
+  hardware: "MacBook M4, 24GB RAM (with Ollama llama3.8:latest + Docker containers running)"
+
+  baseline_4_workers:
     total_time: 5.053s
     successful: 37/40 (92.5%)
     avg_time_per_url: 0.136s
     total_output_size: 827kb
-    vs_webfetch_serial: "27.7x faster (5s vs 140s)"
+    top_keywords: "learning:1153, ai:577, neural:542"
+
+  optimized_8_workers:
+    total_time: 3.685s
+    successful: 37/40 (92.5%)
+    avg_time_per_url: 0.099s
+    speedup_vs_4_workers: "1.37x faster (non-linear scaling)"
+    speedup_vs_serial: "38x faster (3.7s vs 140s)"
+    top_keywords: "learning:1153, ai:573, neural:542"
+
+  comparison:
+    vs_webfetch_serial: "27.7x faster with 4 workers, 38x faster with 8 workers"
     vs_webfetch_tokens: "100x cheaper with summary mode (7.4k vs 740k tokens)"
-  proof: "Sub-second per-URL fetching + perfect keyword extraction (learning:1153, ai:577, neural:542)"
+    scaling_notes: "8 workers = 1.37x speedup (not 2x due to I/O, parsing overhead)"
+
+  proof: "Sub-second per-URL average (0.099s) + perfect keyword extraction under real-world load"
 
 todos:
 

@@ -9,35 +9,18 @@ Fetch and parse dozens of URLs in parallel, returning structured JSON with hiera
 ## Why This Exists
 
 LLMs waste massive context on unstructured web scraping:
+
 - **Serial fetching:** 100 URLs = 100 WebFetch calls = 100 round trips
-- **Raw HTML bloat:** 2000 tokens per page of irrelevant markup
+- **Raw HTML bloat:** (estimates from 3 LLMs) 2000 tokens per page of irrelevant markup
 - **No structure:** LLMs re-parse headings, links, tables every time
 - **No quality signals:** Can't distinguish high-signal content from navigation spam
 
 **LLM Web Parser solves this:**
-- **Parallel fetching:** 100 URLs in ~30 seconds (4 workers by default)
+
+- **Parallel fetching:** 40 URLs in 3.7 seconds (8 workers) or 5 seconds (4 workers default)
 - **Structured output:** Hierarchical sections, typed blocks, extracted links
 - **Confidence scoring:** 0.95 for tables/code, 0.3 for nav spam
 - **Smart parsing:** Auto-escalates from cheap → full mode when extraction quality is low
-
----
-
-## Token Savings Comparison
-
-### Traditional Approach (WebFetch):
-```
-100 URLs × 2000 tokens/page = 200,000 tokens
-+ 100 round trips to LLM
-```
-
-### LLM Web Parser:
-```
-1 command → 100 structured JSON files
-100 URLs × 200 tokens/page (metadata + summaries) = 20,000 tokens
-+ 1 batch processing run
-```
-
-**Result: 10x more efficient**
 
 ---
 
@@ -54,6 +37,7 @@ go mod download
 ### Basic Usage
 
 1. Create `config.yaml`:
+2. 
 ```yaml
 urls:
   - https://example.com
@@ -67,6 +51,7 @@ go run main.go
 ```
 
 3. Find structured JSON in `results/`:
+4. 
 ```bash
 ls results/
 # example_com-2025-12-27.json
@@ -79,6 +64,7 @@ ls results/
 ## Output Format
 
 ### Hierarchical Sections
+
 ```json
 {
   "url": "https://example.com",
@@ -198,9 +184,12 @@ ls results/
 ```
 
 **Concurrency:**
-- 4 workers by default (configurable)
+- 4 workers by default (configurable in `main.go`)
 - Parallel fetching + parsing
 - Graceful error handling (failed URLs don't block others)
+- **Scaling:** 8 workers = 1.37x faster (non-linear due to I/O overhead)
+  - 4 workers: 40 URLs in 5.053s
+  - 8 workers: 40 URLs in 3.685s
 
 ### MapReduce Analytics Pipeline
 
