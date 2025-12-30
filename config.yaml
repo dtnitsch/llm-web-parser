@@ -78,3 +78,6 @@ mapreduce:
 analytics:
   keyword_count:
     keyword_threshold: 20
+
+worker_count: 8
+
