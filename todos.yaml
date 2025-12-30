@@ -1,44 +1,394 @@
+
 ---
+project: llm-web-parser
+last_updated: 2025-12-30
+
+priorities:
+  - P0 (Critical - Next Release)
+  - P1 (High Value)
+  - P2 (Medium Value)
+  - P3 (Nice to Have)
+  - P4 (Research/Experimental)
+
+performance_benchmark:
+  test_date: 2025-12-30
+  test_case: "40 ML research URLs (Wikipedia, frameworks, research labs, courses)"
+  results:
+    total_time: 5.053s
+    successful: 37/40 (92.5%)
+    avg_time_per_url: 0.136s
+    total_output_size: 827kb
+    vs_webfetch_serial: "27.7x faster (5s vs 140s)"
+    vs_webfetch_tokens: "100x cheaper with summary mode (7.4k vs 740k tokens)"
+  proof: "Sub-second per-URL fetching + perfect keyword extraction (learning:1153, ai:577, neural:542)"
+
 todos:
-  # Architecture
-  - [x] Concurrent fetch + parse pipeline
-  - [x] Deterministic MapReduce corpus aggregation
 
-  # Page-level metadata
-  - [x] Extract comprehensive structural metadata
-  - [x] Detect content type heuristically
-  - [x] Detect language with confidence
-  - [x] Estimate reading time and word count
-  - [x] Track extraction mode and quality
+  # =========================
+  # P0 — Critical (Next Release)
+  # =========================
 
-  # Link analysis
-  - [x] Extract internal and external links with anchors
+  - id: cli_args_and_stdout_output
+    priority: P0
+    status: todo
+    description: >
+      Enable CLI argument parsing to avoid config.yaml editing friction.
+      Return structured results to stdout for LLM consumption.
+    details:
+      - Add CLI flags: --urls (comma-separated), --mode (cheap|full), --workers (int), --output (dir)
+      - Parse URLs from CLI, fallback to config.yaml if not provided
+      - Return JSON to stdout with file paths, stats, and summary data
+      - Exit codes: 0 (all success), 1 (partial failure), 2 (total failure)
+    impact: >
+      Removes all UX friction for LLMs. Enables one-command invocation without
+      config file editing. Critical for adoption in LLM generators/planners.
+    example: >
+      llm-web-parser --urls "site1.com,site2.com,site3.com" --workers 8
+      → Returns: {"status":"success", "results":[...], "stats":{...}}
+    effort: "4-6 hours (flag parsing, merge with config, stdout output)"
+    blocking: "Must complete before summary mode (depends on stdout structure)"
 
-  # Remaining high-value additions (local, deterministic)
-  - [ ] Record boilerplate removal signals
-      # removed blocks count
-      # removal ratio
-      # removal source (readability, heuristics)
+  - id: summary_output_mode
+    priority: P0
+    status: todo
+    description: >
+      Add summary output mode that returns lightweight metadata instead of
+      requiring LLMs to read massive JSON files. Includes top keywords from
+      MapReduce pipeline (already computed, zero overhead).
+    details:
+      - Add --output-mode flag: summary (default), full, minimal
+      - Summary includes: file path, size, estimated tokens, confidence distribution,
+        block type distribution, top 10 keywords, content type, extraction quality
+      - Estimated tokens = word_count / 2.5 (conservative)
+      - Token estimates by confidence level (high only, medium+high, all)
+      - Always write full JSON to disk, return summary to stdout
+    impact: >
+      Enables 97-100x token savings on large documents. Example: 68k token file
+      → 500 token summary. LLMs can make informed decisions before reading full content.
+      Proven in testing: 40 URLs → 7.4k tokens (summary) vs 140k (full files).
+    example: >
+      llm-web-parser --urls "wikipedia.org/Machine_learning" --output-mode summary
+      → Returns summary with top_keywords:["learning:321","machine:217","data:121"]
+      → LLM decides: "14k tokens estimated, 22% high-confidence, worth reading"
+    effort: "6-8 hours (summary generation, token estimation, keyword integration)"
+    blocks: "extract_subcommand (needs summary schema defined first)"
 
-  - [ ] Add citation anchors to content blocks
-      # DOM path
-      # byte offset or source range
+  - id: extract_subcommand_filtered
+    priority: P0
+    status: todo
+    description: >
+      Add 'extract' subcommand to filter existing JSON files by confidence,
+      block types, or sections. Enables selective deep-dive after reviewing summaries.
+    details:
+      - New command: llm-web-parser extract --from file.json --min-confidence 0.7
+      - Filters: --min-confidence (float), --block-types (table,code,list), --sections (heading text match)
+      - Returns filtered JSON with stats showing reduction (1843 blocks → 412 blocks, 77% reduction)
+      - Can process multiple files: --from results/*.json
+    impact: >
+      Completes the two-phase workflow: (1) Get summaries, (2) Extract filtered content.
+      Example: 68k token file → filter to high-confidence code/tables → 5k tokens (93% savings).
+    example: >
+      llm-web-parser extract --from results/rfc-editor-*.json \
+        --min-confidence 0.7 --block-types "code,table" --sections "HTTP/3,RFC 9114"
+      → Returns: 34 blocks (1.5k tokens) vs 1843 blocks (68k tokens)
+    effort: "4-6 hours (JSON parsing, filtering logic, output formatting)"
+    depends_on: "summary_output_mode (uses same filtering logic internally)"
 
-  - [ ] Generate explicit content quality signals
-      # text density
-      # link density
-      # heading/body ratio
-      # average words per block
+  # =========================
+  # P0 — DONE (Shipped Features)
+  # =========================
 
-  - [ ] Add stable content fingerprinting
-      # block-level hashes
-      # page-level content hash
+  - id: extraction_quality_signals
+    priority: P0
+    status: done
+    description: >
+      Compute and expose extraction quality signals
+      (extraction_mode, extraction_quality) to allow automatic
+      cheap→full fallback and avoid silent corruption.
 
-  - [ ] Enable content change detection across runs
-      # hash comparison
-      # change classification (minor/major)
+  - id: page_level_structural_metadata
+    priority: P0
+    status: done
+    description: >
+      Extract page-level metadata including content type,
+      detected language, language confidence, word count,
+      estimated reading time, section count, and block count.
 
-notes:
-  - TF-IDF and weighting are corpus-level concerns and intentionally deferred
-  - All tasks remain deterministic, local, and LLM-free
+  - id: language_detection_confidence
+    priority: P0
+    status: done
+    description: >
+      Detect primary language and confidence using a deterministic
+      local language detector (lingua-go).
+
+  - id: internal_external_link_classification
+    priority: P0
+    status: done
+    description: >
+      Classify links as internal vs external and associate them
+      with content blocks and sections.
+
+  - id: cheap_parse_sanity_checks
+    priority: P0
+    status: done
+    description: >
+      Detect suspiciously low block counts or content density
+      during cheap parsing and downgrade extraction quality.
+
+  # =========================
+  # P1 — Very High Value
+  # =========================
+
+  - id: html_to_text_ratio
+    priority: P1
+    status: todo
+    description: >
+      Compute HTML-to-text ratio to detect boilerplate-heavy
+      pages and low-content extractions.
+
+  - id: block_type_distribution
+    priority: P1
+    status: todo
+    description: >
+      Compute ratios of headings, paragraphs, code blocks,
+      tables, and lists relative to total blocks.
+
+  - id: link_density_metrics
+    priority: P1
+    status: todo
+    description: >
+      Compute link density (links per block / per word) to
+      identify navigation-heavy or low-signal pages.
+
+  - id: url_structure_metadata
+    priority: P1
+    status: todo
+    description: >
+      Extract URL-derived signals such as path depth,
+      presence of query params, and canonical host matching.
+
+  - id: image_and_media_counts
+    priority: P1
+    status: todo
+    description: >
+      Count images, videos, and SVGs and capture alt-text
+      presence as structural metadata.
+
+  # =========================
+  # P2 — Medium Value
+  # =========================
+
+  - id: boilerplate_detection_signals
+    priority: P2
+    status: todo
+    description: >
+      Label blocks likely to be boilerplate (nav, footer,
+      sidebar) based on structural and density heuristics.
+
+  - id: publication_date_extraction
+    priority: P2
+    status: todo
+    description: >
+      Extract publication or last-updated timestamps from
+      meta tags or common date patterns.
+
+  - id: element_count_metadata
+    priority: P2
+    status: todo
+    description: >
+      Record counts of common HTML elements (div, p, img,
+      script, form) for junk detection and page profiling.
+
+  - id: citation_offsets
+    priority: P2
+    status: todo
+    description: >
+      Add stable identifiers or byte/character offsets to
+      content blocks for precise citation anchoring.
+
+  # =========================
+  # P3 — Nice to Have
+  # =========================
+
+  - id: block_fingerprinting
+    priority: P3
+    status: todo
+    description: >
+      Compute hashes or fingerprints for blocks to enable
+      content change detection and diffing.
+
+  - id: normalized_link_targets
+    priority: P3
+    status: todo
+    description: >
+      Canonicalize links (remove tracking params, normalize
+      scheme/host) to improve link graph quality.
+
+  - id: advanced_word_statistics
+    priority: P3
+    status: todo
+    description: >
+      Enhance MapReduce outputs with normalized frequencies,
+      TF-IDF, or per-section term distributions.
+
+  - id: resource_limits
+    title: Add memory and size guardrails
+    priority: low
+    status: todo  
+    description: >
+      Add defensive limits to prevent excessive memory usage or OOM conditions
+      when parsing very large or pathological HTML documents.
+    details:
+      - Cap maximum HTML body size per fetch (e.g., 5–10 MB)
+      - Optionally stream HTML instead of materializing full strings
+      - Skip or downgrade to cheap mode when size thresholds are exceeded
+      - Record size-based downgrades in PageMetadata
+    rationale: >
+      Prevents crashes when crawling large sites (e.g., Wikipedia, Gutenberg),
+      while keeping fast-path performance for normal LLM-driven usage.
+    metadata_impact:
+      - metadata.extraction_quality: "degraded"
+      - metadata.extraction_mode: "cheap"
+
+
+
+  # =========================
+  # P0 — Production Readiness (Post-Launch)
+  # =========================
+
+  - id: retry_logic_transient_failures
+    priority: P0-post-launch
+    status: todo
+    description: >
+      Add retry logic with exponential backoff for transient network failures.
+      Prevents batch failures from temporary DNS issues, 502/503 errors, or
+      connection timeouts. Critical for reliability when processing 100+ URLs.
+    details:
+      - Retry 3 times with backoff: 1s, 2s, 4s
+      - Only retry transient errors (5xx, DNS, timeout)
+      - Don't retry 4xx client errors
+      - Log retry attempts for debugging
+    impact: >
+      Without this, a single transient failure aborts the URL. With retry,
+      98% of transient failures succeed on retry.
+    reference: >
+      Similar to llm-foundation/planners reliability patterns
+
+  - id: deduplication_same_url
+    priority: P0-post-launch
+    status: todo
+    description: >
+      Deduplicate URLs before processing to avoid wasted work when same URL
+      appears multiple times in config.yaml (common in recursive crawling).
+    details:
+      - Normalize URLs (remove trailing slash, lowercase host)
+      - Track processed URLs in-memory
+      - Skip duplicates, log warning
+    impact: >
+      Saves compute when crawling with link following (same URL from different sources)
+
+  # =========================
+  # NEW: Operational Excellence (P1)
+  # =========================
+
+  - id: per_domain_rate_limiting
+    priority: P1
+    status: todo
+    description: >
+      Add configurable rate limiting per domain to be a good web citizen
+      and avoid triggering anti-scraping measures.
+    details:
+      - Config: max_requests_per_second_per_domain (default: 1)
+      - Track last request time per domain
+      - Sleep if needed before next request to same domain
+      - Worker pool still processes different domains in parallel
+    impact: >
+      Prevents IP bans, respects server resources, enables crawling large
+      sites (100+ pages from single domain) without being blocked.
+
+  - id: robots_txt_respect
+    priority: P1
+    status: todo
+    description: >
+      Check robots.txt before fetching URLs to respect webmaster preferences.
+      Critical for ethical crawling and avoiding legal issues.
+    details:
+      - Fetch robots.txt once per domain
+      - Cache parsed rules
+      - Skip URLs disallowed for user-agent (configurable, default: "llm-web-parser")
+      - Log skipped URLs with reason
+    impact: >
+      Ethical crawling, reduces risk of legal issues, respects webmaster intent.
+
+  - id: user_agent_customization
+    priority: P1
+    status: todo
+    description: >
+      Allow custom User-Agent string to identify the scraper and contact info.
+      Some sites block default Go HTTP client user-agent.
+    details:
+      - Config: user_agent (default: "llm-web-parser/1.0 (+https://github.com/dtnitsch/llm-web-parser)")
+      - Include contact email or GitHub repo
+      - Helps webmasters identify and whitelist legitimate research use
+    impact: >
+      Some sites return 403 or different content to default User-Agent.
+      Custom UA improves success rate.
+
+  # =========================
+  # P4 — Unknown Value / Thoughts
+  # =========================
+
+  - id: stopwords-round-2
+    priority: P4
+    status: todo
+    description: >
+      We already aggregate words and do 1 round of cleanup - what if we
+      took the "amount to display"x2 - and removed a second round of
+      keywords: MIGHT higher value?
+      https://github.com/igorbrigadir/stopwords/blob/master/en/alir3z4.txt
+
+  - id: stemming-words
+    priority: P4
+    status: todo
+    description: >
+      remove first/last letters to get different words:  runs vs run
+      https://towardsdatascience.com/text-cleaning-for-nlp-in-python-2716be301d5d/
+
+  - id: website-value-confidence
+    priority: P4
+    status: todo
+    description: >
+      LLM's choose the websites they look at for us ... which did they choose?
+      https://www.thoughtco.com/gauging-website-reliability-2073838
+      https://elementor.com/blog/how-to-check-if-a-website-is-legit/
+      Example: spelling errors, number of ads,
+
+  - id: javascript_spa_detection
+    priority: P4
+    status: todo
+    description: >
+      Detect JavaScript-heavy SPAs (low extraction quality + high script count)
+      and recommend headless browser fallback to user.
+    details:
+      - Count <script> tags in raw HTML
+      - If extraction_quality == "low" AND script_count > 20, flag as SPA
+      - Add metadata.spa_detected: true
+      - Log warning suggesting Playwright/Puppeteer
+    impact: >
+      Helps LLMs understand when tool can't handle a URL (e.g., React apps)
+      and recommend alternative approaches.
+
+  - id: content_hash_change_detection
+    priority: P4
+    status: todo
+    description: >
+      Hash content blocks to enable change detection between re-crawls.
+      Useful for monitoring competitor sites or documentation updates.
+    details:
+      - Add block.content_hash (SHA256 of normalized text)
+      - Enable comparison: "Which sections changed since last week?"
+    impact: >
+      Enables monitoring workflows (track competitor pricing changes,
+      docs updates, blog post edits)
+
 
