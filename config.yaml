@@ -1,13 +1,80 @@
 urls:
-  - https://www.gutenberg.org/files/11/11-h/11-h.htm
-  - https://en.wikipedia.org/wiki/Main_Page
-  - https://www.apple.com/
-  - https://www.notarealwebsite.com/ # 500 error
-#  - http://192.0.2.1/ # will cause a context deadline timeout in go
+  # ========================================
+  # Category 1: Foundational Concepts (7)
+  # ========================================
+  - https://en.wikipedia.org/wiki/Machine_learning
+  - https://en.wikipedia.org/wiki/Deep_learning
+  - https://en.wikipedia.org/wiki/Artificial_intelligence
+  - https://en.wikipedia.org/wiki/Neural_network
+  - https://en.wikipedia.org/wiki/Supervised_learning
+  - https://en.wikipedia.org/wiki/Unsupervised_learning
+  - https://en.wikipedia.org/wiki/Reinforcement_learning
+
+  # ========================================
+  # Category 2: Academic Research (5)
+  # ========================================
+  - https://arxiv.org/list/cs.LG/recent
+  - https://arxiv.org/list/cs.AI/recent
+  - https://paperswithcode.com/methods/category/neural-networks
+  - https://paperswithcode.com/sota
+  - https://distill.pub
+
+  # ========================================
+  # Category 3: Major Frameworks/Libraries (6)
+  # ========================================
+  - https://scikit-learn.org/stable/
+  - https://www.tensorflow.org/learn
+  - https://pytorch.org/tutorials/
+  - https://keras.io/guides/
+  - https://huggingface.co/docs/transformers/index
+  - https://xgboost.readthedocs.io/en/stable/
+
+  # ========================================
+  # Category 4: Industry Leaders/Research Labs (8)
+  # ========================================
+  - https://openai.com/research
+  - https://www.anthropic.com/research
+  - https://ai.google/research/
+  - https://ai.meta.com/research/
+  - https://www.microsoft.com/en-us/research/research-area/artificial-intelligence/
+  - https://deepmind.google/research/
+  - https://www.nvidia.com/en-us/deep-learning-ai/
+  - https://aws.amazon.com/machine-learning/
+
+  # ========================================
+  # Category 5: Educational Resources (5)
+  # ========================================
+  - https://www.coursera.org/learn/machine-learning
+  - https://course.fast.ai
+  - https://www.deeplearning.ai
+  - https://developers.google.com/machine-learning/crash-course
+  - https://www.kaggle.com/learn
+
+  # ========================================
+  # Category 6: News/Blogs/Community (5)
+  # ========================================
+  - https://machinelearningmastery.com
+  - https://towardsdatascience.com
+  - https://www.reddit.com/r/MachineLearning/
+  - https://news.ycombinator.com/item?id=1
+  - https://mlnews.dev
+
+  # ========================================
+  # Category 7: Specific Architectures (2)
+  # ========================================
+  - https://en.wikipedia.org/wiki/Transformer_(machine_learning_model)
+  - https://en.wikipedia.org/wiki/Convolutional_neural_network
+
+  # ========================================
+  # Category 8: Tools/Platforms (2)
+  # ========================================
+  - https://www.mlflow.org
+  - https://wandb.ai/site
+
 
 mapreduce:
   reduce_keys: ["word", "count"]
 
 analytics:
   keyword_count:
-    keyword_threshold: 10
+    keyword_threshold: 20
