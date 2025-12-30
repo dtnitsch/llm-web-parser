@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/url"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -13,12 +12,11 @@ import (
 	"github.com/dtnitsch/llm-web-parser/models"
 	"github.com/dtnitsch/llm-web-parser/pkg/analytics"
 	"github.com/dtnitsch/llm-web-parser/pkg/fetcher"
+	"github.com/dtnitsch/llm-web-parser/pkg/manifest"
 	"github.com/dtnitsch/llm-web-parser/pkg/mapreduce"
 	"github.com/dtnitsch/llm-web-parser/pkg/parser"
 	"github.com/dtnitsch/llm-web-parser/pkg/storage"
 )
-
-const numWorkers = 4
 
 // Job defines a task for a worker to perform.
 type Job struct {
@@ -27,7 +25,13 @@ type Job struct {
 
 // Result holds the outcome of a processed job.
 type Result struct {
-	Page *models.Page
+	URL           string
+	FilePath      string
+	Page          *models.Page
+	Error         error
+	ErrorType     string
+	WordCounts    map[string]int
+	FileSizeBytes int64 // Cached file size to avoid redundant os.Stat() calls
 }
 
 func main() {
@@ -36,13 +40,15 @@ func main() {
 
 // worker is a goroutine that processes jobs from the jobs channel
 // and sends results to the results channel.
-func worker(id int, f *fetcher.Fetcher, s *storage.Storage, p *parser.Parser, wg *sync.WaitGroup, jobs <-chan Job, results chan<- Result) {
+func worker(id int, f *fetcher.Fetcher, s *storage.Storage, p *parser.Parser, a *analytics.Analytics, wg *sync.WaitGroup, jobs <-chan Job, results chan<- Result) {
 	defer wg.Done()
 	for job := range jobs {
 		log.Printf("Worker %d started job for URL: %s", id, job.URL)
 		fn := getSavePath(job.URL)
-		var page *models.Page
-		var err error
+		result := Result{
+			URL:      job.URL,
+			FilePath: fn,
+		}
 
 		// For structured JSON, we don't want to use the cache of flat text files.
 		// A more advanced caching system would be needed. For now, we re-fetch.
@@ -52,35 +58,59 @@ func worker(id int, f *fetcher.Fetcher, s *storage.Storage, p *parser.Parser, wg
 		html, err := f.GetHtml(job.URL)
 		if err != nil {
 			log.Printf("Worker %d: Error fetching HTML for %s: %s", id, job.URL, err)
+			result.Error = err
+			result.ErrorType = "fetch_error"
+			result.FilePath = ""
+			results <- result
 			continue // Get next job
 		}
 
 		// Parse the HTML into a structured Page object
-		page, err = p.Parse(models.ParseRequest{
-			URL: job.URL,
+		page, err := p.Parse(models.ParseRequest{
+			URL:  job.URL,
 			HTML: html.String(),
 			Mode: models.ParseModeFull,
 			//Mode: models.ParseModeCheap,
 		})
 		if err != nil {
 			log.Printf("Worker %d: Error parsing HTML for %s: %s", id, job.URL, err)
+			result.Error = err
+			result.ErrorType = "parse_error"
+			result.FilePath = ""
+			results <- result
 			continue
 		}
+
+		// Compute per-URL word counts
+		wordCounts := mapreduce.Map(page.ToPlainText(), a)
+		result.WordCounts = wordCounts
 
 		// Marshal the Page object into indented JSON
 		jsonData, err := json.MarshalIndent(page, "", "  ")
 		if err != nil {
 			log.Printf("Worker %d: Error marshalling JSON for %s: %s", id, job.URL, err)
+			result.Error = err
+			result.ErrorType = "marshal_error"
+			result.FilePath = ""
+			result.Page = page
+			results <- result
 			continue
 		}
 
 		// Save the JSON data
 		if err := s.SaveFile(fn, jsonData); err != nil {
 			log.Printf("Worker %d: Error saving file [%s]: %s", id, fn, err)
+			result.Error = err
+			result.ErrorType = "save_error"
+			result.Page = page
+			results <- result
 			continue // Get next job
 		}
 
-		results <- Result{Page: page}
+		// Cache file size to avoid redundant os.Stat() calls during manifest generation
+		result.FileSizeBytes = int64(len(jsonData))
+		result.Page = page
+		results <- result
 		log.Printf("Worker %d finished job for URL: %s", id, job.URL)
 	}
 }
@@ -104,9 +134,13 @@ func multiUrls() {
 	results := make(chan Result, len(config.URLs))
 
 	// Start workers
-	for w := 1; w <= numWorkers; w++ {
+	var workerCount = 4
+	if config.WorkerCount > 0 {
+		workerCount = config.WorkerCount
+	}
+	for w := 1; w <= workerCount; w++ {
 		wg.Add(1)
-		go worker(w, f, s, p, &wg, jobs, results)
+		go worker(w, f, s, p, a, &wg, jobs, results)
 	}
 
 	// Send jobs to the workers
@@ -121,25 +155,25 @@ func multiUrls() {
 	fmt.Println("--- All fetch workers finished ---")
 
 	// Collect results
+	var allResults []Result
 	var allPages []*models.Page
 	for result := range results {
-		allPages = append(allPages, result.Page)
-	}
-
-	if len(allPages) == 0 {
-		log.Println("No content was fetched or processed. Exiting.")
-		return
+		allResults = append(allResults, result)
+		if result.Page != nil {
+			allPages = append(allPages, result.Page)
+		}
 	}
 
 	// --- MapReduce Phase ---
 	// The analytics still run on the flat text version of the content.
 	fmt.Println("\n--- Starting MapReduce Phase ---")
 
-	// 1. Map Stage
+	// 1. Map Stage (aggregate across all URLs)
 	intermediateResults := []map[string]int{}
-	for _, page := range allPages {
-		counts := mapreduce.Map(page.ToPlainText(), a)
-		intermediateResults = append(intermediateResults, counts)
+	for _, result := range allResults {
+		if result.WordCounts != nil {
+			intermediateResults = append(intermediateResults, result.WordCounts)
+		}
 	}
 	fmt.Printf("Map phase complete. Generated %d intermediate frequency maps.\n", len(intermediateResults))
 
@@ -149,7 +183,17 @@ func multiUrls() {
 
 	// 3. Present Results
 	fmt.Println("\n--- Top 25 Words (Aggregated) ---")
-	printSortedMap(finalWordCounts, 25)
+	mapreduce.PrintTopKeywords(finalWordCounts, 25)
+
+	// 4. Generate summary manifest
+	fmt.Println("\n--- Generating Summary Manifest ---")
+	manifestResults := convertToManifestResults(allResults)
+	manifestPath, err := manifest.GenerateSummary(manifestResults, finalWordCounts, s)
+	if err != nil {
+		log.Printf("Error generating summary manifest: %s", err)
+	} else {
+		fmt.Printf("Summary manifest saved to: %s\n", manifestPath)
+	}
 }
 
 // getSavePath generates a filesystem-friendly path from a URL.
@@ -162,38 +206,41 @@ func getSavePath(rawURL string) string {
 		safeString = strings.ReplaceAll(safeString, "/", "_")
 		return fmt.Sprintf("results/%s-%s.json", safeString, time.Now().Format("2006-01-02"))
 	}
+
+	// Sanitize host
 	host := strings.ReplaceAll(parsedURL.Host, ".", "_")
+
+	// Sanitize path to avoid collisions (e.g., github.com/cli/cli vs github.com/urfave/cli)
+	path := strings.Trim(parsedURL.Path, "/")
+	path = strings.ReplaceAll(path, "/", "-")
+	path = strings.ReplaceAll(path, ".", "_")
+
+	// Combine host + path
+	var base string
+	if path != "" {
+		base = fmt.Sprintf("%s-%s", host, path)
+	} else {
+		base = host
+	}
+
 	today := time.Now().Format("2006-01-02")
-	return fmt.Sprintf("results/%s-%s.json", host, today)
+	return fmt.Sprintf("results/%s-%s.json", base, today)
 }
 
-// printSortedMap sorts a map by value (desc) and prints the top N results.
-func printSortedMap(data map[string]int, topN int) {
-	// Convert map to slice of structs for sorting
-	type kv struct {
-		Key   string
-		Value int
+// convertToManifestResults converts main.go Result types to manifest.FetchResult.
+// This adapter function prevents circular dependencies between packages.
+func convertToManifestResults(results []Result) []manifest.FetchResult {
+	manifestResults := make([]manifest.FetchResult, len(results))
+	for i, r := range results {
+		manifestResults[i] = manifest.FetchResult{
+			URL:           r.URL,
+			FilePath:      r.FilePath,
+			Page:          r.Page,
+			Error:         r.Error,
+			ErrorType:     r.ErrorType,
+			WordCounts:    r.WordCounts,
+			FileSizeBytes: r.FileSizeBytes,
+		}
 	}
-	var ss []kv
-	for k, v := range data {
-		ss = append(ss, kv{k, v})
-	}
-
-	// Sort slice by value in descending order
-	sort.Slice(ss, func(i, j int) bool {
-		return ss[i].Value > ss[j].Value
-	})
-
-	// Print the top N results
-	limit := topN
-	if len(ss) < topN {
-		limit = len(ss)
-	}
-	if limit < 0 {
-		limit = 0
-	}
-
-	for i := 0; i < limit; i++ {
-		fmt.Printf("%d. %s: %d\n", i+1, ss[i].Key, ss[i].Value)
-	}
+	return manifestResults
 }

@@ -10,6 +10,7 @@ type Config struct {
 	URLs      []string                     `yaml:"urls"`
 	MapReduce MapReduceConfig              `yaml:"mapreduce"`
 	Analytics map[string]AnalyticsConfig   `yaml:"analytics"`
+	WorkerCount int `yaml:"worker_count"`
 }
 
 type MapReduceConfig struct {

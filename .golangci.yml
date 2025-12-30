@@ -1,0 +1,318 @@
+# golangci-lint configuration for service-template
+# See ADR-024 for rationale and decisions
+# Documentation: https://golangci-lint.run/usage/configuration/
+
+# Configuration file version
+version: 2
+
+run:
+  # Timeout for analysis
+  timeout: 5m
+
+  # Exit code when at least one issue was found
+  issues-exit-code: 1
+
+  # Include test files
+  tests: true
+
+  # Default concurrency is the number of available CPU cores
+  # concurrency: 4
+
+  # Allow multiple parallel golangci-lint instances
+  allow-parallel-runners: true
+
+# Output configuration
+output:
+  # Colored output
+  colored-output: true
+
+  # Format: colored-line-number, line-number, json, tab, checkstyle, code-climate
+  format: colored-line-number
+
+  # Print lines of code with issue
+  print-issued-lines: true
+
+  # Print linter name in the end of issue text
+  print-linter-name: true
+
+  # Make issues output unique by line
+  uniq-by-line: true
+
+  # Sort results by: filepath, line, and column
+  sort-results: true
+
+# Linters configuration
+linters:
+  # Disable all linters by default, then enable specific ones
+  disable-all: true
+
+  enable:
+    # ════════════════════════════════════════════════════════════════
+    # Tier 1: Code Correctness (MUST)
+    # ════════════════════════════════════════════════════════════════
+    - errcheck       # Checks for unchecked errors (critical for Go)
+    - govet          # Official Go tool, reports suspicious constructs
+    - staticcheck    # Most comprehensive general-purpose linter (includes gosimple and unused)
+    - ineffassign    # Detects ineffectual assignments
+    - unused         # Finds unused code (enabled by default, included for explicitness)
+
+    # ════════════════════════════════════════════════════════════════
+    # Tier 1: Error Handling (MUST - aligned with ADR-013)
+    # ════════════════════════════════════════════════════════════════
+    - errorlint      # Ensures proper error wrapping (%w vs %v)
+    - wrapcheck      # Ensures errors from external packages are wrapped
+
+    # ════════════════════════════════════════════════════════════════
+    # Tier 1: Security (MUST)
+    # ════════════════════════════════════════════════════════════════
+    - gosec          # Security-focused: SQL injection, weak crypto, etc.
+
+    # ════════════════════════════════════════════════════════════════
+    # Tier 1: Code Quality (MUST)
+    # ════════════════════════════════════════════════════════════════
+    - revive         # Fast, configurable replacement for golint
+    - gocritic       # Opinionated checks for style, performance, and bugs
+
+    # Note: gofmt and goimports are formatters, not linters
+    # Run them separately with: just fmt
+
+    # ════════════════════════════════════════════════════════════════
+    # Tier 2: Database (SHOULD - aligned with database standards)
+    # ════════════════════════════════════════════════════════════════
+    - rowserrcheck   # Ensures rows.Err() is checked
+    - sqlclosecheck  # Ensures rows.Close() and stmt.Close() are called
+
+    # ════════════════════════════════════════════════════════════════
+    # Tier 2: Context Usage (SHOULD)
+    # ════════════════════════════════════════════════════════════════
+    - noctx          # Finds HTTP requests without context
+
+    # ════════════════════════════════════════════════════════════════
+    # Tier 2: Maintainability (SHOULD)
+    # ════════════════════════════════════════════════════════════════
+    - gocognit       # Cognitive complexity (readability metric)
+    - misspell       # Catches common misspellings
+
+    # ════════════════════════════════════════════════════════════════
+    # Tier 2: Performance (SHOULD)
+    # ════════════════════════════════════════════════════════════════
+    - prealloc       # Suggests slice preallocation
+
+# Linter-specific settings
+linters-settings:
+  # errcheck: Check for unchecked errors
+  errcheck:
+    # Check blank assignments (e.g., _ = err)
+    check-blank: true
+
+    # Check type assertions (e.g., value, _ := x.(Type))
+    check-type-assertions: true
+
+    # Report errors in defer statements
+    check-defer: true
+
+  # errorlint: Ensure proper error wrapping
+  errorlint:
+    # Check for %w in fmt.Errorf (ADR-013 requirement)
+    errorf: true
+
+    # Check for error comparisons with ==
+    comparison: true
+
+    # Check for errors.As and errors.Is usage
+    asserts: true
+
+  # wrapcheck: Ensure errors from external packages are wrapped
+  wrapcheck:
+    # List of packages to consider "internal" (don't require wrapping)
+    ignorePkgs:
+      - github.com/pantheon-systems/service-template/internal
+
+    # List of functions to ignore
+    ignoreSigs:
+      - .Errorf(
+      - errors.New(
+      - errors.Unwrap(
+      - errors.Join(
+      - .Wrap(
+      - .Wrapf(
+
+  # govet: Official Go static analyzer
+  govet:
+    # Enable all analyzers
+    enable-all: true
+
+    # Disable specific analyzers if needed
+    disable:
+      - shadow  # Can be too strict, enable if desired
+
+  # gosec: Security linter
+  gosec:
+    # Exclude specific rules
+    excludes:
+      - G104  # Duplicate of errcheck
+
+    # Severity level
+    severity: medium
+
+    # Confidence level
+    confidence: medium
+
+  # revive: Fast, configurable linter
+  revive:
+    # Enable all rules by default
+    enable-all-rules: false
+
+    # Enable specific rules
+    rules:
+      # Naming and documentation
+      - name: exported
+        severity: warning
+        arguments:
+          - "checkPrivateReceivers"
+          - "sayRepetitiveInsteadOfStutters"
+
+      - name: unexported-return
+        severity: warning
+
+      - name: var-naming
+        severity: warning
+        arguments:
+          - ["ID", "URL", "HTTP", "API", "JSON", "XML", "UUID"]
+
+      # Code quality
+      - name: blank-imports
+        severity: warning
+
+      - name: context-as-argument
+        severity: warning
+
+      - name: error-return
+        severity: warning
+
+      - name: error-strings
+        severity: warning
+
+      - name: error-naming
+        severity: warning
+
+      - name: if-return
+        severity: warning
+
+      - name: increment-decrement
+        severity: warning
+
+      - name: indent-error-flow
+        severity: warning
+
+      - name: range
+        severity: warning
+
+      - name: receiver-naming
+        severity: warning
+
+      - name: time-naming
+        severity: warning
+
+      - name: unreachable-code
+        severity: warning
+
+      - name: unused-parameter
+        severity: warning
+
+      - name: unused-receiver
+        severity: warning
+
+  # gocritic: Opinionated linter
+  gocritic:
+    # Enable multiple checks by tags
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+      - experimental
+      - opinionated
+
+    # Disable specific checks
+    disabled-checks:
+      - whyNoLint  # We use nolint comments sparingly
+      - hugeParam  # Can be too strict for some structs
+
+  # gocognit: Cognitive complexity
+  gocognit:
+    # Minimal cognitive complexity to report
+    min-complexity: 15
+
+  # gofmt: Standard formatting
+  gofmt:
+    # Simplify code (e.g., s[a:len(s)] -> s[a:])
+    simplify: true
+
+  # goimports: Import management
+  goimports:
+    # Put local imports after 3rd-party packages
+    local-prefixes: github.com/pantheon-systems/service-template
+
+  # staticcheck: Comprehensive static analysis
+  staticcheck:
+    # Enable all checks
+    checks: ["all"]
+
+  # misspell: Spell checker
+  misspell:
+    # Locale to use
+    locale: US
+
+    # List of words to ignore
+    ignore-words:
+      - pantheon  # Company name
+
+# Issues configuration
+issues:
+  # Maximum issues count per one linter
+  max-issues-per-linter: 0
+
+  # Maximum count of issues with the same text
+  max-same-issues: 0
+
+  # Show only new issues created after git revision
+  # new-from-rev: HEAD
+
+  # Exclude specific issues
+  exclude-rules:
+    # Exclude linters for test files
+    - path: _test\.go
+      linters:
+        - errcheck      # Test errors often intentionally unchecked
+        - gosec         # Security less critical in tests
+        - wrapcheck     # Error wrapping less critical in tests
+
+    # Exclude specific linters for generated files
+    - path: ".*\\.gen\\.go"
+      linters:
+        - revive
+        - stylecheck
+        - gocritic
+
+    # Exclude error wrapping for main.go (top-level errors)
+    - path: main\.go
+      linters:
+        - wrapcheck
+      text: "error returned from external package is unwrapped"
+
+    # Exclude specific gosec rules in specific files
+    - path: internal/config/
+      linters:
+        - gosec
+      text: "G304"  # File path from variable (config files)
+
+  # Exclude issues with specific text
+  exclude:
+    # Exclude some staticcheck messages
+    - "SA1019:"  # Using deprecated function (sometimes necessary)
+
+  # Independently of option `exclude` we use default exclude patterns
+  exclude-use-default: false
+
+# Severity configuration removed - not supported in golangci-lint v2.7.2
+# All issues treated as errors by default
