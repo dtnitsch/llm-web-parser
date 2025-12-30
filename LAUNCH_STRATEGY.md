@@ -34,14 +34,16 @@
 ```markdown
 ## Proven Performance
 
-**Benchmark (2025-12-30):** Fetched 40 major ML websites in 5.053 seconds
-- Success rate: 92.5% (37/40)
-- Average: 0.136 seconds per URL
-- 27.7x faster than serial WebFetch
-- 100x cheaper tokens with summary mode
-- Perfect keyword extraction: learning:1153, ai:577, neural:542
+**Benchmark (2025-12-30):** Fetched 40 major ML websites in under 4 seconds
+- **8 workers:** 3.685 seconds total (0.099s per URL average)
+- **4 workers:** 5.053 seconds total (0.136s per URL average)
+- **Success rate:** 92.5% (37/40)
+- **Hardware:** MacBook M4, 24GB RAM (with Ollama + Docker running)
+- **vs WebFetch:** 38x faster with 8 workers, 27.7x faster with 4 workers
+- **Token savings:** 100x cheaper with summary mode (7.4k vs 740k tokens)
+- **Keyword extraction:** Perfect results (learning:1153, ai:573, neural:542)
 
-See `todos.yaml` for performance benchmark details.
+See `todos.yaml` for detailed performance benchmark data.
 ```
 
 **Add demo GIF/video:**
@@ -95,7 +97,7 @@ furnished to do so, subject to the following conditions:
 ```markdown
 # Introducing llm-web-parser: 100x Cheaper Web Research for LLMs
 
-**TL;DR:** A Go-based web scraper optimized for LLM consumption that's 27x faster and 100x cheaper than traditional approaches.
+**TL;DR:** A Go-based web scraper optimized for LLM consumption that's 38x faster and 100x cheaper than traditional approaches. Fetch 40 websites in under 4 seconds on a laptop.
 
 ## The Problem
 
@@ -118,12 +120,13 @@ llm-web-parser fetches dozens of URLs in parallel, returning structured JSON wit
 - Content type detection (documentation/article/landing)
 - Language detection with confidence
 
-**Proven Performance:**
+**Proven Performance (MacBook M4, 24GB RAM):**
 
-- 40 URLs in 5.053 seconds (92.5% success rate)
-- 0.136 seconds per URL average
-- 27.7x faster than serial WebFetch
+- 40 URLs in 3.685 seconds with 8 workers (92.5% success rate)
+- 0.099 seconds per URL average
+- 38x faster than serial WebFetch (3.7s vs 140s)
 - 100x cheaper tokens with summary mode (7.4k vs 740k)
+- Real-world conditions: Ollama + Docker running in background
 
 ## Real-World Example
 
@@ -139,12 +142,12 @@ llm-web-parser fetches dozens of URLs in parallel, returning structured JSON wit
 **After (llm-web-parser):**
 
 - Fetches: 40 URLs (Wikipedia, frameworks, research labs, courses, tools)
-- Time: 5 seconds
+- Time: 3.7 seconds (8 workers on MacBook M4)
 - Tokens: 7,400 (summary mode)
 - Coverage: Exhaustive
-- Bonus: Automatic keyword extraction (learning:1153, ai:577, neural:542)
+- Bonus: Automatic keyword extraction (learning:1153, ai:573, neural:542)
 
-**8x better coverage, 5.6x faster, 22x cheaper.**
+**8x better coverage, 7.6x faster, 22x cheaper.**
 
 ## How It Works
 
@@ -225,7 +228,7 @@ See `CONTRIBUTING.md`. Priority areas:
 **Subreddits (in priority order):**
 
 1. **r/LocalLLaMA** (270k members, power users)
-   - Title: "I built a web scraper 100x cheaper for LLM research (40 URLs in 5 seconds)"
+   - Title: "I built a web scraper 100x cheaper for LLM research (40 URLs in under 4 seconds)"
    - Flair: [Tool/Framework]
    - Include: Benchmark gif, GitHub link
 
@@ -245,7 +248,7 @@ See `CONTRIBUTING.md`. Priority areas:
 **C. Hacker News**
 
 - Submit: `https://github.com/dtnitsch/llm-web-parser`
-- Title: "llm-web-parser: 100x cheaper web scraping for LLMs (5 seconds for 40 URLs)"
+- Title: "llm-web-parser: 100x cheaper web scraping for LLMs (under 4 seconds for 40 URLs)"
 - Best time: 8-10am PT on Tuesday/Wednesday
 - If it hits front page: 50-100k views in 24 hours
 
@@ -262,12 +265,12 @@ The problem: Claude, ChatGPT, and other LLMs waste massive context on web resear
 
 The solution: llm-web-parser
 
-- 40 URLs in 5 seconds (27x faster)
+- 40 URLs in under 4 seconds (38x faster)
 - 7,400 tokens with summary mode (100x cheaper)
 - Structured JSON with confidence scores
 - Automatic keyword extraction
 
-Real benchmark: Fetched 40 ML research sites (Wikipedia, PyTorch, TensorFlow, OpenAI, etc.) in 5.053 seconds with 92.5% success rate.
+Real benchmark: Fetched 40 ML research sites (Wikipedia, PyTorch, TensorFlow, OpenAI, etc.) in 3.685 seconds with 8 workers, 92.5% success rate on a MacBook M4.
 
 Built in Go. MIT licensed. Ready for production.
 
@@ -301,11 +304,11 @@ I'm a long-time Claude user and just open-sourced a web scraper optimized for LL
 
 **My solution (llm-web-parser):**
 
-- 40 URLs in 5 seconds (parallel Go workers)
+- 40 URLs in under 4 seconds (parallel Go workers)
 - 7,400 tokens with summary mode (100x cheaper)
 - Structured JSON with confidence scores, keyword extraction
 
-**Proven benchmark:** Fetched 40 major ML sites in 5.053s with 92.5% success rate.
+**Proven benchmark:** Fetched 40 major ML sites in 3.685s (8 workers) with 92.5% success rate on a MacBook M4.
 
 I built this because I wanted Claude to recommend MORE web research, not less.
 With this tool, Claude could analyze 40+ sites per query instead of conservatively picking 5-8.
@@ -344,7 +347,7 @@ I built an open-source web scraper optimized for GPT-4/ChatGPT workflows.
 
 **llm-web-parser:**
 
-- 40 URLs in 5 seconds (27x faster than serial)
+- 40 URLs in under 4 seconds (38x faster than serial)
 - Structured JSON with confidence scores
 - Keyword extraction via MapReduce
 - 100x token savings with summary mode
@@ -416,11 +419,11 @@ The problem: LLMs recommend 5-10 URLs max because serial fetching is slow
 and unstructured HTML wastes tokens.
 
 My solution:
-- Parallel fetching: 40 URLs in 5 seconds
+- Parallel fetching: 40 URLs in under 4 seconds
 - Structured output: Hierarchical sections, confidence scores, keyword extraction
 - Token efficiency: 7.4k tokens (summary mode) vs 740k (raw HTML)
 
-Real benchmark: Fetched 40 ML research sites in 5.053s with 92.5% success rate.
+Real benchmark: Fetched 40 ML research sites in 3.685s (8 workers on MacBook M4) with 92.5% success rate.
 
 Next up: CLI args and summary mode (no config editing, 100x token savings).
 
@@ -603,7 +606,7 @@ Would love feedback on roadmap priorities (see todos.yaml).
 
 ### Reddit r/LocalLLaMA Post
 
-**Title:** "I built a web scraper 100x cheaper for LLM research (40 URLs in 5 seconds)"
+**Title:** "I built a web scraper 100x cheaper for LLM research (40 URLs in under 4 seconds)"
 
 **Body:**
 
@@ -612,17 +615,17 @@ I got tired of LLMs conservatively recommending 5-10 URLs for research because W
 
 **llm-web-parser:**
 
-- Fetches 40 URLs in 5 seconds (parallel Go workers)
+- Fetches 40 URLs in under 4 seconds (parallel Go workers)
 - Returns structured JSON with confidence scores
 - Automatic keyword extraction via MapReduce
 - 100x token savings with summary mode
 
-**Real benchmark (just ran this):**
+**Real benchmark (just ran this on a MacBook M4):**
 
 - 40 major ML sites (Wikipedia, PyTorch, OpenAI, etc.)
-- 5.053 seconds total
+- 3.685 seconds total (8 workers)
 - 92.5% success rate (37/40)
-- Perfect keyword extraction: learning:1153, ai:577, neural:542
+- Perfect keyword extraction: learning:1153, ai:573, neural:542
 
 **Why this matters:**
 
@@ -655,7 +658,7 @@ Would love feedback on the roadmap (see todos.yaml).
 
 **URL:** `https://github.com/dtnitsch/llm-web-parser`
 
-**Title:** "llm-web-parser: 100x cheaper web scraping for LLMs (40 URLs in 5 seconds)"
+**Title:** "llm-web-parser: 100x cheaper web scraping for LLMs (under 4 seconds for 40 URLs)"
 
 **Optional comment:**
 
@@ -663,7 +666,7 @@ Would love feedback on the roadmap (see todos.yaml).
 Author here. Built this because LLMs conservatively recommend 5-10 URLs for research
 when they could do 40+ with the right tooling.
 
-Real benchmark: 40 ML research sites in 5.053 seconds, 92.5% success rate.
+Real benchmark: 40 ML research sites in 3.685 seconds (8 workers on MacBook M4), 92.5% success rate.
 
 Next up: CLI args and summary mode (100x token savings for large documents).
 
@@ -686,7 +689,7 @@ I just open-sourced llm-web-parser: a web scraper built specifically for LLM wor
 
 ✨ My solution:
 
-• 40 URLs in 5 seconds (27x faster)
+• 40 URLs in under 4 seconds (38x faster)
 • 7,400 tokens with summary mode (100x cheaper)
 • Structured JSON with confidence scores
 • Automatic keyword extraction
@@ -694,7 +697,7 @@ I just open-sourced llm-web-parser: a web scraper built specifically for LLM wor
 📊 Proven benchmark:
 
 Fetched 40 ML research sites (Wikipedia, PyTorch, TensorFlow, OpenAI, Anthropic, Google AI, etc.)
-in 5.053 seconds with 92.5% success rate.
+in 3.685 seconds (8 workers on MacBook M4) with 92.5% success rate.
 
 🛠️ Built with Go. MIT licensed. Production-ready today.
 
@@ -801,4 +804,4 @@ For commercial support or integration partnerships, email [your email].
 
 ---
 
-**Good luck! This tool deserves attention. The benchmark speaks for itself: 5 seconds for 40 URLs is production-grade performance.**
+**Good luck! This tool deserves attention. The benchmark speaks for itself: under 4 seconds for 40 URLs on a laptop is production-grade performance.**
