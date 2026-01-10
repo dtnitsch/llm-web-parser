@@ -80,6 +80,99 @@ type Stats struct {
 	TopKeywords      []string `json:"top_keywords,omitempty"`
 }
 
+// ResultSummaryTerse is the token-optimized v2 format with abbreviated field names.
+type ResultSummaryTerse struct {
+	URL               string         `json:"u"`
+	FilePath          string         `json:"p,omitempty"`
+	Status            int            `json:"s"`                // 0=success, 1=failed
+	Error             string         `json:"e,omitempty"`
+	FileSizeBytes     int64          `json:"sz,omitempty"`
+	EstimatedTokens   int            `json:"tk,omitempty"`
+	ContentType       string         `json:"ct,omitempty"`     // l=landing, a=article, d=docs, u=unknown
+	ExtractionQuality int            `json:"q,omitempty"`      // 1=ok, 0=low, -1=degraded
+	ConfidenceDist    [3]int         `json:"cd,omitempty"`     // [high, medium, low] fixed order
+	BlockTypeDist     map[string]int `json:"bd,omitempty"`
+}
+
+// StatsTerse is the token-optimized v2 stats format.
+type StatsTerse struct {
+	Total   int      `json:"t"`
+	Success int      `json:"ok"`
+	Failed  int      `json:"f"`
+	Time    float64  `json:"ts"`
+	Keywords []string `json:"kw,omitempty"`
+}
+
+// FinalOutputTerse is the v2 terse output wrapper.
+type FinalOutputTerse struct {
+	Status  string               `json:"s"`
+	Results []ResultSummaryTerse `json:"r"`
+	Stats   StatsTerse           `json:"st"`
+}
+
+// toTerseStatus converts status string to int (0=success, 1=failed).
+func toTerseStatus(status string) int {
+	if status == "success" {
+		return 0
+	}
+	return 1
+}
+
+// toTerseContentType converts content_type to single char (l=landing, a=article, d=docs, u=unknown).
+func toTerseContentType(ct string) string {
+	switch ct {
+	case "landing":
+		return "l"
+	case "article":
+		return "a"
+	case "documentation":
+		return "d"
+	default:
+		return "u"
+	}
+}
+
+// toTerseQuality converts extraction_quality to int (1=ok, 0=low, -1=degraded).
+func toTerseQuality(q string) int {
+	switch q {
+	case "ok":
+		return 1
+	case "low":
+		return 0
+	case "degraded":
+		return -1
+	default:
+		return 0
+	}
+}
+
+// toTerseResult converts ResultSummary to ResultSummaryTerse.
+func toTerseResult(r ResultSummary) ResultSummaryTerse {
+	return ResultSummaryTerse{
+		URL:               r.URL,
+		FilePath:          r.FilePath,
+		Status:            toTerseStatus(r.Status),
+		Error:             r.Error,
+		FileSizeBytes:     r.FileSizeBytes,
+		EstimatedTokens:   r.EstimatedTokens,
+		ContentType:       toTerseContentType(r.ContentType),
+		ExtractionQuality: toTerseQuality(r.ExtractionQuality),
+		ConfidenceDist:    [3]int{r.ConfidenceDist["high"], r.ConfidenceDist["medium"], r.ConfidenceDist["low"]},
+		BlockTypeDist:     r.BlockTypeDist,
+	}
+}
+
+// toTerseStats converts Stats to StatsTerse.
+func toTerseStats(s Stats) StatsTerse {
+	return StatsTerse{
+		Total:    s.TotalURLs,
+		Success:  s.Successful,
+		Failed:   s.Failed,
+		Time:     s.TotalTimeSeconds,
+		Keywords: s.TopKeywords,
+	}
+}
+
 func main() {
 	// Will be overridden in commands based on --quiet flag
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
@@ -138,6 +231,11 @@ func main() {
 						Name:  "output-dir",
 						Usage: "Base directory for storing raw and parsed artifacts",
 						Value: artifact_manager.DefaultBaseDir,
+					},
+					&cli.StringFlag{
+						Name:  "summary-version",
+						Usage: "Summary output format version (v1=verbose, v2=terse)",
+						Value: "v1",
 					},
 				},
 			},
@@ -281,10 +379,11 @@ func fetchAction(c *cli.Context) error {
 		TopKeywords:      mapreduce.TopKeywords(finalWordCounts, 25),
 	}
 
+	var summaryResults []ResultSummary
 	outputMode := strings.ToLower(c.String("output-mode"))
 	switch outputMode {
 	case "summary":
-		summaryResults := []ResultSummary{}
+		summaryResults = []ResultSummary{}
 		for _, r := range allResults {
 			summary := buildSummary(r)
 			summaryResults = append(summaryResults, summary)
@@ -323,10 +422,34 @@ func fetchAction(c *cli.Context) error {
 	var outputData []byte
 	var marshalErr error
 	outputFormat := strings.ToLower(c.String("format"))
-	if outputFormat == "yaml" {
-		outputData, marshalErr = yaml.Marshal(finalOutput)
+	summaryVersion := strings.ToLower(c.String("summary-version"))
+
+	// Use terse format if v2 is requested and output mode is summary
+	if summaryVersion == "v2" && outputMode == "summary" {
+		// Convert to terse format
+		terseResults := make([]ResultSummaryTerse, len(summaryResults))
+		for i, r := range summaryResults {
+			terseResults[i] = toTerseResult(r)
+		}
+
+		terseFinalOutput := FinalOutputTerse{
+			Status:  finalOutput.Status,
+			Results: terseResults,
+			Stats:   toTerseStats(stats),
+		}
+
+		if outputFormat == "yaml" {
+			outputData, marshalErr = yaml.Marshal(terseFinalOutput)
+		} else {
+			outputData, marshalErr = json.MarshalIndent(terseFinalOutput, "", "  ")
+		}
 	} else {
-		outputData, marshalErr = json.MarshalIndent(finalOutput, "", "  ")
+		// Use regular format (v1)
+		if outputFormat == "yaml" {
+			outputData, marshalErr = yaml.Marshal(finalOutput)
+		} else {
+			outputData, marshalErr = json.MarshalIndent(finalOutput, "", "  ")
+		}
 	}
 
 	if marshalErr != nil {

@@ -2,6 +2,62 @@
 
 **Output format for parsed web pages**
 
+## Summary Output Formats
+
+The `fetch` command supports two summary output formats controlled by `--summary-version`:
+
+- **v1 (default)** - Verbose format with descriptive field names
+- **v2 (terse)** - Token-optimized format with abbreviated field names
+
+**Token Savings:** v2 reduces summary output by ~40% (381 bytes → 228 bytes per URL)
+
+### Terse Format (v2)
+
+```bash
+./llm-web-parser fetch --urls "..." --summary-version v2
+```
+
+```jsonc
+{
+  "s": "success",           // Status: "success" or "partial_failure"
+  "r": [                    // Results array
+    {
+      "u": "string",        // URL
+      "p": "string",        // File path
+      "s": 0,               // Status: 0=success, 1=failed
+      "e": "string",        // Error message (if s=1)
+      "sz": 1234,           // File size in bytes
+      "tk": 450,            // Estimated tokens
+      "ct": "l",            // Content type: l=landing, a=article, d=docs, u=unknown
+      "q": 1,               // Quality: 1=ok, 0=low, -1=degraded
+      "cd": [20, 15, 5],    // Confidence distribution: [high, medium, low]
+      "bd": {"p": 25}       // Block type distribution
+    }
+  ],
+  "st": {                   // Stats
+    "t": 10,                // Total URLs
+    "ok": 9,                // Successful
+    "f": 1,                 // Failed
+    "ts": 4.2,              // Total time (seconds)
+    "kw": ["api:45"]        // Top keywords
+  }
+}
+```
+
+**Field Mappings:**
+- `url → u`, `file_path → p`, `status → s`, `error → e`
+- `file_size_bytes → sz`, `estimated_tokens → tk`
+- `content_type → ct`, `extraction_quality → q`
+- `confidence_distribution → cd`, `block_type_distribution → bd`
+- Stats: `total_urls → t`, `successful → ok`, `failed → f`, `total_time_seconds → ts`, `top_keywords → kw`
+
+**Enum Mappings:**
+- Status: `success=0, failed=1`
+- Content Type: `landing=l, article=a, documentation=d, unknown=u`
+- Quality: `ok=1, low=0, degraded=-1`
+
+---
+
 ## Page Schema
 
 ```jsonc
