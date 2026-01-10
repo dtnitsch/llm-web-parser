@@ -1,0 +1,44 @@
+- id: multi_stage_analysis_workflow
+  priority: P1
+  status: todo
+  description: >
+    Architect the tool around a multi-stage, deferred-computation workflow
+    that allows an LLM to intelligently request more detail on demand.
+  details:
+    - Create a `minimal` output mode that only saves HTML to cache and extracts
+      absolute minimum metadata (e.g., title, description).
+    - Create a new `analyze` command that reads from the cache and performs
+      expensive parsing and analysis on a user-specified subset of URLs.
+  impact: >
+    This is the platonic ideal of an LLM-centric workflow. It minimizes
+    wasted computation and allows the LLM to act as the "scheduler" for
+    expensive analysis.
+
+- id: terse_output_format
+  priority: P1
+  status: todo
+  description: >
+    Define and implement a v2 `summary` output format that is aggressively
+    optimized for token efficiency, based on peer LLM feedback.
+  details:
+    - Adopt a schema with abbreviated keys (e.g., `u` for url, `et` for tokens).
+    - Use arrays for fixed-order distributions (e.g., `cd: [10, 20, 5]` for confidence).
+    - Add a `--summary-version` flag (`v1`, `v2`) to maintain backward compatibility.
+    - Document the terse schema in the README.
+  impact: >
+    Directly reduces API costs and unlocks the ability to analyze more
+    documents within the same context window.
+
+- id: adaptive_caching
+  priority: P1
+  status: todo
+  description: >
+    Enhance the caching system with intelligent, adaptive TTLs based on content
+    type, with a user-override mechanism.
+  details:
+    - On first fetch, detect content type and publication date to assign a
+      default cache profile (e.g., Permanent, Stable, Volatile).
+    - Allow users to specify their own TTL patterns in the config file, which
+      will override the adaptive defaults.
+  impact: >
+    Improves the intelligence and efficiency of the cache.

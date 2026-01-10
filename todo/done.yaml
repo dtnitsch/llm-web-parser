@@ -1,0 +1,23 @@
+
+- id: file_based_caching
+  priority: P0
+  status: done
+  completed: 2026-01-09
+  description: >
+    Implement a simple, deterministic, file-based cache with a TTL. This
+    is the foundational enabler for all multi-stage workflows and must be
+    completed before other features that rely on it.
+
+- id: extract_subcommand_filtered
+  priority: P0
+  status: done
+  completed: 2026-01-10
+  description: >
+    Add 'extract' subcommand to filter existing JSON files, enabling
+    powerful, LLM-driven deep-dives into content.
+  notes: >
+    Implemented basic filtering with --strategy flag supporting conf:>=X and type:X|Y filters.
+    All test cases pass: conf filtering, type filtering, and combined filtering.
+  impact: >
+    Completes the core `minimal -> summary -> extract` workflow. This command
+    is the surgical tool an LLM uses in the final stage of analysis.

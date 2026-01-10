@@ -80,7 +80,7 @@ func GenerateSummary(results []FetchResult, aggregateKeywords map[string]int, s 
 	}
 
 	// Save manifest to file
-	manifestPath := fmt.Sprintf("results/summary-%s.json", time.Now().Format("2006-01-02"))
+	manifestPath := fmt.Sprintf("llm-web-parser-results/summary-%s.json", time.Now().Format("2006-01-02"))
 	manifestData, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("error marshalling manifest: %w", err)
