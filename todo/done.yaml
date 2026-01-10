@@ -34,3 +34,16 @@
     All docs are concise, practical, and optimized for both human and LLM consumption.
   impact: >
     Enables LLMs and developers to use the tool effectively with copy-paste ready examples.
+
+- id: terse_output_format
+  priority: P1
+  status: done
+  completed: 2026-01-10
+  description: >
+    Token-optimized v2 summary format with abbreviated field names and enum mappings.
+  notes: >
+    Implemented 40% size reduction (381 bytes → 228 bytes per URL). Added --summary-version flag (v1/v2).
+    Enum mappings: status (0=success,1=failed), content_type (l/a/d/u), quality (1/0/-1).
+    Documented in SCHEMA.md and CLI-REFERENCE.md.
+  impact: >
+    Reduces API costs by 40% for summary output, enables analyzing more documents in same context window.

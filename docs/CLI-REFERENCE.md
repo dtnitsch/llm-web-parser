@@ -20,6 +20,7 @@
 | `--force-fetch` | | bool | `false` | Force refetch, ignore cache |
 | `--config` | `-c` | string | `config.yaml` | Path to config file (alternative to `--urls`) |
 | `--output-dir` | | string | `llm-web-parser-results` | Base directory for artifacts |
+| `--summary-version` | | string | `v1` | Summary format: `v1` (verbose) or `v2` (terse, 40% smaller) |
 | `--quiet` | | bool | `false` | Suppress log output (only errors) |
 
 **Examples:**
@@ -39,6 +40,9 @@
 
 # Adjust cache TTL to 24 hours
 ./llm-web-parser fetch --urls "https://example.com" --max-age "24h"
+
+# Use terse v2 format (40% smaller summary output)
+./llm-web-parser fetch --urls "https://example.com" --summary-version v2
 ```
 
 ---
