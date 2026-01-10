@@ -1,6 +1,7 @@
 package models
 
-type PageMetadata struct {
+// PageMetadata contains computed metadata about a page.
+type PageMetadata struct{
 	// Classification
 	ContentType string `json:"content_type"` // article, documentation, blog, landing, forum, unknown
 	Language    string `json:"language"`     // ISO-639-1 if possible (e.g. "en")

@@ -1,6 +1,7 @@
 package fetcher
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -43,11 +44,15 @@ func (f *Fetcher) GetHtml(url string) (*goquery.Document, error) {
 }
 
 func (f *Fetcher) GetHtmlBytes(url string) ([]byte, error) {
-    resp, err := f.client.Get(url)
+    req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+    }
+    resp, err := f.client.Do(req)
     if err != nil {
         return nil, fmt.Errorf("failed to make HTTP request: %w", err)
     }
-    defer resp.Body.Close()
+    defer func() { _ = resp.Body.Close() }()
 
     if resp.StatusCode != http.StatusOK {
         return nil, fmt.Errorf("failed to fetch HTML, status code: %d", resp.StatusCode)
@@ -76,11 +81,15 @@ func (f *Fetcher) Fetch(url string) (*FetchResponse, error) {
 		},
 	}
 
-	resp, err := client.Get(url)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make HTTP request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {

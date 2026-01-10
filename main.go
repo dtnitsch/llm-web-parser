@@ -1,3 +1,4 @@
+// Package main provides the llm-web-parser CLI tool for extracting and analyzing web content.
 package main
 
 import (
@@ -299,7 +300,7 @@ func filterResultFields(result interface{}, fieldsStr string, isTerse bool) map[
 func structToMap(obj interface{}) map[string]interface{} {
 	data, _ := json.Marshal(obj)
 	var result map[string]interface{}
-	json.Unmarshal(data, &result)
+	_ = json.Unmarshal(data, &result)
 	return result
 }
 
@@ -472,7 +473,7 @@ func analyzeAction(c *cli.Context) error {
 	p := &parser.Parser{}
 	a := &analytics.Analytics{}
 
-	var results []Result
+	results := make([]Result, 0, len(urls))
 	for _, url := range urls {
 		url = strings.TrimSpace(url)
 		logger.Info("Analyzing URL from cache", "url", url)
@@ -553,7 +554,7 @@ func analyzeAction(c *cli.Context) error {
 		Status: "success",
 	}
 
-	var summaryResults []ResultSummary
+	summaryResults := make([]ResultSummary, 0, len(results))
 	for _, r := range results {
 		summary := buildSummary(r)
 		summaryResults = append(summaryResults, summary)
@@ -616,7 +617,7 @@ func extractAction(c *cli.Context) error {
 	allFilteredPages := []*models.Page{}
 
 	for _, path := range filePaths {
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(filepath.Clean(path))
 		if err != nil {
 			logger.Warn("failed to read file, skipping", "path", path, "error", err)
 			continue
@@ -750,7 +751,7 @@ func fetchAction(c *cli.Context) error {
 		}
 
 		// Update sessions index
-		sessionInfo := session.SessionInfo{
+		sessionInfo := session.Info{
 			SessionID:   sessionID,
 			Created:     time.Now(),
 			URLCount:    len(config.URLs),
@@ -916,7 +917,7 @@ func run(logger *slog.Logger, config *models.Config, manager *artifact_manager.M
 	close(results)
 	logger.Info("All fetch workers finished")
 
-	var allResults []Result
+	allResults := make([]Result, 0, len(config.URLs))
 	var runErr error
 	for result := range results {
 		allResults = append(allResults, result)
@@ -1166,7 +1167,7 @@ func writeSummaryIndexToSession(results []Result, sessionDir string) error {
 	}
 
 	// Write to file
-	if err := os.WriteFile(outputPath, yamlBytes, 0644); err != nil {
+	if err := os.WriteFile(outputPath, yamlBytes, 0600); err != nil {
 		return fmt.Errorf("failed to write index file: %w", err)
 	}
 
@@ -1175,7 +1176,7 @@ func writeSummaryIndexToSession(results []Result, sessionDir string) error {
 
 // writeSummaryDetailsToSession writes the full details to a session directory
 func writeSummaryDetailsToSession(results []Result, sessionDir string) error {
-	var details []SummaryDetails
+	details := make([]SummaryDetails, 0, len(results))
 
 	for _, r := range results {
 		details = append(details, buildSummaryDetails(r))
@@ -1191,7 +1192,7 @@ func writeSummaryDetailsToSession(results []Result, sessionDir string) error {
 	}
 
 	// Write to file
-	if err := os.WriteFile(outputPath, yamlBytes, 0644); err != nil {
+	if err := os.WriteFile(outputPath, yamlBytes, 0600); err != nil {
 		return fmt.Errorf("failed to write details file: %w", err)
 	}
 

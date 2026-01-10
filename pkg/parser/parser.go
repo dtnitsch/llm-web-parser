@@ -19,13 +19,13 @@ func (p *Parser) Parse(req models.ParseRequest) (*models.Page, error) {
 
 	parsedURL, err := url.Parse(req.URL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse URL: %w", err)
 	}
 
 	readParser := readability.NewParser()
 	article, err := readParser.Parse(strings.NewReader(req.HTML), parsedURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse HTML with readability: %w", err)
 	}
 
 	var page *models.Page
@@ -63,7 +63,7 @@ func (p *Parser) Parse(req models.ParseRequest) (*models.Page, error) {
 	return page, nil
 }
 
-func (p *Parser) parseMinimal(rawURL string, article readability.Article, parsedURL *url.URL) (*models.Page, error) {
+func (p *Parser) parseMinimal(rawURL string, article readability.Article, _ *url.URL) (*models.Page, error) {
 	// Minimal mode: ONLY extract metadata from go-readability, no content parsing
 	page := &models.Page{
 		URL:   rawURL,
@@ -92,7 +92,7 @@ func (p *Parser) parseFull(
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(article.Content))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse HTML document: %w", err)
 	}
 
 	var (
@@ -211,13 +211,13 @@ func (p *Parser) parseFull(
 	return page, nil
 }
 
-func (p *Parser) parseCheap(rawURL string, article readability.Article, parsedUrl *url.URL) (*models.Page, error) {
+func (p *Parser) parseCheap(rawURL string, article readability.Article, parsedURL *url.URL) (*models.Page, error) {
 
 	doc, err := goquery.NewDocumentFromReader(
 		strings.NewReader(article.Content),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse HTML document: %w", err)
 	}
 
 	var blocks []models.ContentBlock
@@ -235,7 +235,7 @@ func (p *Parser) parseCheap(rawURL string, article readability.Article, parsedUr
 		}
 
 		blockCounter++
-		links := extractLinks(s, parsedUrl)
+		links := extractLinks(s, parsedURL)
 
 		blocks = append(blocks, models.ContentBlock{
 			ID:         fmt.Sprintf("block-%d", blockCounter),
@@ -270,7 +270,7 @@ func extractTable(s *goquery.Selection) *models.Table {
 	var headers []string
 	var rows [][]string
 
-	s.Find("tr").Each(func(i int, tr *goquery.Selection) {
+	s.Find("tr").Each(func(_ int, tr *goquery.Selection) {
 		var row []string
 
 		tr.Find("th").Each(func(_ int, th *goquery.Selection) {
@@ -379,23 +379,6 @@ func computeConfidence(text string, links int, blockType string) float64 {
 	return score
 }
 
-func resolveParseMode(req models.ParseRequest) models.ParseMode {
-	// Explicit mode wins unless unsafe
-	if req.Mode != 0 {
-		if req.Mode == models.ParseModeCheap && req.RequireCitations {
-			return models.ParseModeFull
-		}
-		return req.Mode
-	}
-
-	// Infer intent
-	if req.RequireCitations {
-		return models.ParseModeFull
-	}
-
-	// Default
-	return models.ParseModeCheap
-}
 
 // enrichMetadata populates page metadata from readability article and detector analysis
 func enrichMetadata(page *models.Page, article readability.Article, rawURL string) {

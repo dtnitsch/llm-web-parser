@@ -32,11 +32,7 @@ func isValidKeyword(word string) bool {
 		return false
 	}
 	singleQuoteCount := strings.Count(word, "'")
-	if singleQuoteCount%2 != 0 {
-		return false
-	}
-
-	return true
+	return singleQuoteCount%2 == 0
 }
 
 // TopKeywords returns the top N keywords from aggregated word counts as formatted strings.

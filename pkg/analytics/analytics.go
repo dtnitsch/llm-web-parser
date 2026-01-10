@@ -109,7 +109,7 @@ func (a *Analytics) WordFrequency(text string) map[string]int {
 		// Remove punctuation from words
 		word = strings.TrimFunc(word, func(r rune) bool {
 			// Keep only lowercase letters and numbers
-			return !('a' <= r && r <= 'z' || '0' <= r && r <= '9')
+			return ('a' > r || r > 'z') && ('0' > r || r > '9')
 		})
 
 		// Skip if it's a common word or empty after cleaning

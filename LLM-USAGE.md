@@ -1,784 +1,603 @@
-# LLM Usage Guide
+# LLM Integration Guide
 
-**How LLMs (Claude, ChatGPT, etc.) should use llm-web-parser in generators and planners**
+**llm-web-parser** - Session-based web scraper optimized for LLM consumption with enriched metadata and intelligent filtering.
 
-This document is written for LLM consumption. If you're an LLM reading this, follow these guidelines when users request bulk web research.
+## Quick Start
+
+```bash
+# Default: quiet=true, format=yaml, output-mode=tier2
+./llm-web-parser --urls "https://www.cdc.gov,https://arxiv.org,https://docs.python.org"
+
+# Output:
+# Parsed 3 URLs - 3 success, 0 failed. Summary files in llm-web-parser-results/sessions/2026-01-10T14-30-abc123. Features enabled:
+```
+
+**What happens:**
+1. Fetches 3 URLs in parallel (~2-3 seconds)
+2. Creates session: `llm-web-parser-results/sessions/{timestamp-hash}/`
+3. Writes `summary-index.yaml` (minimal, ~150 bytes/URL)
+4. Writes `summary-details.yaml` (full enriched metadata, ~400 bytes/URL)
+5. Updates `index.yaml` with session info
+6. Prints concise stats to stdout
 
 ---
 
-## When to Use This Tool vs WebFetch
+## Understanding Sessions
 
-### ✅ Use llm-web-parser when:
-- **Bulk research:** 10+ URLs needed
-- **Competitive analysis:** Scraping multiple competitor sites
-- **Documentation aggregation:** Fetching API docs, guides, tutorials
-- **Link following:** Recursive crawling (extract internal links, re-run)
-- **Trend analysis:** Aggregating keywords/topics across many sources
-- **Token budgets are tight:** 100 URLs would exceed context limits with WebFetch
+### Session Structure
 
-### ❌ Use WebFetch when:
-- **Single URL:** One-off query, user-driven real-time search
-- **No setup allowed:** User hasn't installed llm-web-parser
-- **Immediate results:** Can't wait for batch processing
+```
+llm-web-parser-results/
+├── FIELDS.yaml                    ← Field reference (read this first!)
+├── index.yaml                     ← All sessions registry
+├── sessions/
+│   ├── 2026-01-10T14-30-abc123/  ← Timestamp-first for discovery
+│   │   ├── summary-index.yaml    ← Minimal scannable data
+│   │   └── summary-details.yaml  ← Full enriched metadata
+│   └── 2026-01-10T15-45-def456/
+│       ├── summary-index.yaml
+│       └── summary-details.yaml
+├── raw/                          ← Shared HTML cache
+└── parsed/                       ← Shared JSON cache
+```
+
+### Finding Sessions
+
+```bash
+# Get latest session ID
+SESSION=$(yq '.sessions[0].session_id' llm-web-parser-results/index.yaml)
+
+# List all sessions
+yq '.sessions[] | .session_id + " (" + (.url_count | tostring) + " URLs)"' llm-web-parser-results/index.yaml
+
+# Find sessions by date
+yq '.sessions[] | select(.session_id | test("2026-01-10"))' llm-web-parser-results/index.yaml
+```
+
+### Session Cache (Instant Retrieval)
+
+```bash
+# First run: fetches and parses
+./llm-web-parser --urls "https://www.cdc.gov"
+# Parsed 1 URLs - 1 success, 0 failed...
+
+# Second run: instant cache hit!
+./llm-web-parser --urls "https://www.cdc.gov"
+# Session cache hit! Results from: llm-web-parser-results/sessions/2026-01-10T14-30-f9dc16d6d37a
+```
+
+**Same URLs = Same session hash = Instant retrieval (no re-fetching)**
 
 ---
 
-## Quick Integration Pattern (Modern CLI)
+## Field Reference
 
-### Step 1: Generate URL List & Fetch
+**Read this first:** `llm-web-parser-results/FIELDS.yaml`
 
-When user says: *"Research the top 10 project management tools"*
+This auto-generated file documents:
+- All available fields and their types
+- Valid values for enums (domain_type, domain_category, etc.)
+- Query examples using yq
+- Difference between summary-index and summary-details
 
-**Your response:**
-```markdown
-I'll research the top 10 project management tools using llm-web-parser for efficient bulk fetching.
+### Key Fields for Filtering
 
-Run this command:
-```bash
-cd /path/to/llm-web-parser
-./llm-web-parser fetch --quiet --urls "\
-https://www.asana.com,\
-https://monday.com,\
-https://www.notion.so,\
-https://trello.com,\
-https://clickup.com,\
-https://www.wrike.com,\
-https://basecamp.com,\
-https://www.smartsheet.com,\
-https://airtable.com,\
-https://www.teamwork.com"
-```
-
-This will fetch all 10 sites in parallel (~5 seconds) and save to llm-web-parser-results/.
-
-Let me know when it's done, and I'll analyze the results.
-```
-
-### Step 2: Analyze Results with Token-Efficient Queries
-
-```markdown
-Now I'll use jq to extract insights efficiently:
-
-```bash
-# Quick overview - what succeeded?
-jq -r '.results[] | "\(.url): \(.status)"' output.json
-
-# Get only high-quality extractions
-jq -r '.results[] | select(.extraction_quality == "ok" and .estimated_tokens < 1000) | .url' output.json
-
-# Total token budget for all pages
-jq '.results | map(.estimated_tokens) | add' output.json
-```
-
-For detailed analysis, I'll read specific parsed files and filter by confidence:
-
-```bash
-# Extract features (high-confidence paragraphs only)
-jq -r '.content[].blocks[] | select(.confidence >= 0.8 and .type == "p") | .text' llm-web-parser-results/parsed/www_asana_com-*.json
-
-# Extract pricing tables (always 0.95 confidence)
-jq '.content[].blocks[] | select(.type == "table") | .table' llm-web-parser-results/parsed/*.json
-```
-```
-
----
-
-## Token-Efficient Data Analysis
-
-### Shell Oneliners for Quick Queries
-
-**Get all page titles across files:**
-```bash
-jq -r '.title' llm-web-parser-results/parsed/*.json
-```
-
-**Count high-confidence blocks per file:**
-```bash
-for file in llm-web-parser-results/parsed/*.json; do
-  echo "$file: $(jq '[.content[].blocks[] | select(.confidence >= 0.7)] | length' "$file")"
-done
-```
-
-**Extract only high-confidence paragraphs (200 char preview):**
-```bash
-jq -r '.content[].blocks[] | select(.confidence >= 0.8 and .type == "p") | .text[:200]' file.json
-```
-
-**Find all code blocks across files:**
-```bash
-jq -r '.content[].blocks[] | select(.type == "code") | "\(.code.language): \(.code.content[:100])"' llm-web-parser-results/parsed/*.json
-```
-
-**Get metadata summary for all files:**
-```bash
-jq -s 'map({url, tokens: .metadata.estimated_tokens, quality: .metadata.extraction_quality, type: .metadata.content_type})' llm-web-parser-results/parsed/*.json
-```
-
-**Count total estimated tokens:**
-```bash
-jq -s 'map(.metadata.estimated_tokens) | add' llm-web-parser-results/parsed/*.json
-```
-
-### Using Extract Command (50-80% Token Savings)
-
-**Get only high-confidence content:**
-```bash
-./llm-web-parser extract --from 'llm-web-parser-results/parsed/*.json' --strategy="conf:>=0.7" > filtered.json
-```
-
-**Extract only code blocks (documentation analysis):**
-```bash
-./llm-web-parser extract --from 'llm-web-parser-results/parsed/*.json' --strategy="type:code" > code-only.json
-```
-
-**Combined filters (high-confidence paragraphs only):**
-```bash
-./llm-web-parser extract --from 'llm-web-parser-results/parsed/*.json' --strategy="conf:>=0.8,type:p" > summaries.json
-```
-
-**Extract headings only (TOC generation):**
-```bash
-./llm-web-parser extract --from 'llm-web-parser-results/parsed/*.json' --strategy="type:h2" > toc.json
-```
-
-### Multi-File Analysis Patterns
-
-**Find pages mentioning specific keywords:**
-```bash
-jq -r 'select(.content[].blocks[].text | test("API authentication"; "i")) | .url' llm-web-parser-results/parsed/*.json
-```
-
-**Get all external links (citation extraction):**
-```bash
-jq -r '.content[].blocks[].links[]? | select(.type == "external") | .href' llm-web-parser-results/parsed/*.json | sort -u
-```
-
-**Aggregate confidence distribution:**
-```bash
-jq -s '[.[] | .content[].blocks[] | .confidence] | group_by(. >= 0.7) | map({high: (. | map(select(. >= 0.7)) | length), low: (. | map(select(. < 0.7)) | length)})' llm-web-parser-results/parsed/*.json
-```
-
----
-
-## JSON Output Format Reference
-
-### Full Structure
-
-```json
-{
-  "url": "https://example.com",
-  "title": "Page Title",
-  "content": [
-    {
-      "id": "section-1",
-      "heading": {
-        "id": "block-1",
-        "type": "h2",
-        "text": "Section Heading",
-        "confidence": 0.7
-      },
-      "level": 2,
-      "blocks": [
-        {
-          "id": "block-2",
-          "type": "p",
-          "text": "Paragraph content...",
-          "links": [
-            {
-              "href": "/pricing",
-              "text": "See pricing",
-              "type": "internal"
-            }
-          ],
-          "confidence": 0.85
-        },
-        {
-          "id": "block-3",
-          "type": "table",
-          "table": {
-            "headers": ["Feature", "Basic", "Pro"],
-            "rows": [
-              ["Users", "5", "Unlimited"],
-              ["Storage", "10GB", "1TB"]
-            ]
-          },
-          "confidence": 0.95
-        },
-        {
-          "id": "block-4",
-          "type": "code",
-          "code": {
-            "language": "python",
-            "content": "import requests\nresponse = requests.get('https://api.example.com')"
-          },
-          "confidence": 0.95
-        }
-      ],
-      "children": []
-    }
-  ],
-  "metadata": {
-    "content_type": "landing",
-    "language": "en",
-    "language_confidence": 0.9,
-    "word_count": 1245,
-    "estimated_read_min": 5.5,
-    "section_count": 8,
-    "block_count": 42,
-    "extraction_mode": "full",
-    "extraction_quality": "ok"
-  }
-}
-```
-
----
-
-## How to Query Structured Output
-
-### Filter by Confidence Score
-
-**High-signal content only:**
-```python
-# In your analysis
-high_confidence_blocks = [
-    block for section in page["content"]
-    for block in section["blocks"]
-    if block["confidence"] >= 0.7
-]
-```
-
-**Rationale:**
-- `confidence >= 0.7` - Headings, dense paragraphs, structured content
-- `confidence < 0.5` - Navigation, footers, low-signal text
-
-### Extract Structured Elements
-
-**Tables (always 0.95 confidence):**
-```python
-tables = [
-    block["table"] for section in page["content"]
-    for block in section["blocks"]
-    if block["type"] == "table"
-]
-```
-
-**Code blocks (always 0.95 confidence):**
-```python
-code_blocks = [
-    block["code"]["content"] for section in page["content"]
-    for block in section["blocks"]
-    if block["type"] == "code"
-]
-```
-
-### Query by Section Level
-
-**H2 sections only (top-level topics):**
-```python
-h2_sections = [
-    section for section in page["content"]
-    if section["level"] == 2
-]
-```
-
-### Link Extraction
-
-**Internal links (for depth-first crawling):**
-```python
-internal_links = [
-    link["href"] for section in page["content"]
-    for block in section["blocks"]
-    for link in block.get("links", [])
-    if link["type"] == "internal"
-]
-```
-
-**External links (for citations):**
-```python
-external_links = [
-    link["href"] for section in page["content"]
-    for block in section["blocks"]
-    for link in block.get("links", [])
-    if link["type"] == "external"
-]
-```
-
----
-
-## Quality Gates
-
-### Check Extraction Quality
-
-```python
-if page["metadata"]["extraction_quality"] == "low":
-    # Parsing failed, may be JavaScript-heavy or broken HTML
-    # Options:
-    # 1. Re-run with ParseModeFull (if was cheap mode)
-    # 2. Use headless browser (Playwright)
-    # 3. Skip this URL
-```
-
-### Language Confidence
-
-```python
-if page["metadata"]["language_confidence"] < 0.75:
-    # Language detection uncertain
-    # May be multi-lingual or too short to detect
-```
-
-### Content Type Heuristics
-
-```python
-content_type = page["metadata"]["content_type"]
-
-if content_type == "documentation":
-    # High code/table density
-    # Look for API endpoints, code examples
-elif content_type == "article":
-    # Long-form text (1200+ words)
-    # Look for main arguments, key quotes
-elif content_type == "landing":
-    # Short, promotional (< 500 words)
-    # Look for feature lists, pricing
-```
-
----
-
-## Example Workflows
-
-### Workflow 1: Competitive Feature Matrix
-
-**User request:** *"Compare features of the top 5 CRM tools"*
-
-**Step 1: Generate URLs**
 ```yaml
-urls:
-  - https://www.salesforce.com
-  - https://www.hubspot.com
-  - https://www.zoho.com/crm
-  - https://pipedrive.com
-  - https://www.monday.com/crm
-```
+# Domain Classification (FREE metadata - no extra API calls!)
+domain_type: [gov, edu, academic, commercial, mobile, unknown]
+domain_category: [gov/health, academic/ai, academic/general, news/tech, docs/api, blog, general]
+country: us  # 2-letter code or "unknown"
+confidence: 8.0  # 0-10 quality/credibility score
 
-**Step 2: Run parser**
-```bash
-go run main.go
-```
+# Academic Signals (boolean, only present if true)
+has_doi: true
+has_arxiv: true
+has_latex: true
+has_citations: true
+has_references: true
+has_abstract: true
+academic_score: 7.5  # 0-10 composite score
 
-**Step 3: Extract features from structured JSON**
+# Visual Metadata (token-efficient!)
+has_favicon: true  # Boolean (3 tokens vs 30 for URL)
+image_count: 23    # Count (4 tokens vs 600 for URLs)
 
-Pseudo-code for LLM analysis:
-```python
-for result_file in results/*.json:
-    page = json.load(result_file)
-
-    # Find "Features" section (h2 heading)
-    features_section = find_section_by_heading(page, "Features")
-
-    # Extract high-confidence blocks from that section
-    feature_blocks = [
-        block for block in features_section["blocks"]
-        if block["confidence"] >= 0.7
-    ]
-
-    # Also check for feature tables
-    feature_tables = [
-        block["table"] for block in features_section["blocks"]
-        if block["type"] == "table"
-    ]
-```
-
-**Step 4: Generate comparison table**
-
-| Feature | Salesforce | HubSpot | Zoho | Pipedrive | Monday CRM |
-|---------|-----------|---------|------|-----------|------------|
-| Contact Management | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Email Integration | ✓ | ✓ | ✓ | ✓ | ⚠️ |
-| Custom Dashboards | ✓ | ✓ | ✓ | ❌ | ✓ |
-
----
-
-### Workflow 2: Documentation Aggregation
-
-**User request:** *"Aggregate all API documentation from docs.example.com"*
-
-**Step 1: Seed URL**
-```yaml
-urls:
-  - https://docs.example.com
-```
-
-**Step 2: Run parser, extract internal links**
-
-```python
-page = json.load("results/docs_example_com-*.json")
-
-# Extract all internal links from high-confidence blocks
-api_links = [
-    link["href"] for section in page["content"]
-    for block in section["blocks"]
-    if block["confidence"] >= 0.5
-    for link in block.get("links", [])
-    if link["type"] == "internal" and "/api/" in link["href"]
-]
-```
-
-**Step 3: Add discovered links to config.yaml**
-```yaml
-urls:
-  - https://docs.example.com/api/auth
-  - https://docs.example.com/api/users
-  - https://docs.example.com/api/billing
-  - https://docs.example.com/api/webhooks
-```
-
-**Step 4: Re-run parser**
-
-**Step 5: Extract API endpoints from code blocks**
-
-```python
-for result_file in results/*.json:
-    page = json.load(result_file)
-
-    # Code blocks have confidence == 0.95
-    code_blocks = [
-        block["code"]["content"]
-        for section in page["content"]
-        for block in section["blocks"]
-        if block["type"] == "code"
-    ]
-
-    # Parse code blocks for API endpoints
-    # Example: curl https://api.example.com/v1/users
+# Content Metrics
+word_count: 1245
+estimated_tokens: 498
+section_count: 8
+language: en
+language_confidence: 0.95
 ```
 
 ---
 
-### Workflow 3: Trend Analysis (MapReduce)
+## Query Patterns (yq)
 
-**User request:** *"What are the trending topics in AI news this week?"*
-
-**Step 1: Generate URLs**
-```yaml
-urls:
-  - https://techcrunch.com/tag/artificial-intelligence
-  - https://www.theverge.com/ai-artificial-intelligence
-  - https://arstechnica.com/ai
-  - https://venturebeat.com/ai
-  - https://www.wired.com/tag/artificial-intelligence
-```
-
-**Step 2: Run parser with MapReduce**
+### Basic Session Access
 
 ```bash
-go run main.go
+# Set session directory for queries
+SESSION_DIR="llm-web-parser-results/sessions/$(yq '.sessions[0].session_id' llm-web-parser-results/index.yaml)"
+
+# Quick scan - what did we fetch?
+yq '.[] | .url + ": " + .title' "$SESSION_DIR/summary-index.yaml"
+
+# Full metadata for analysis
+yq '.' "$SESSION_DIR/summary-details.yaml"
 ```
 
-**Output (automatically generated):**
-```
---- Top 25 Words (Aggregated) ---
-1. ai: 847
-2. model: 623
-3. data: 512
-4. training: 487
-5. llm: 456
-6. openai: 389
-7. google: 367
-8. microsoft: 341
-9. chatgpt: 312
-10. anthropic: 289
-...
+### Filter by Domain Type
+
+```bash
+# Government sites only
+yq '.[] | select(.domain_type == "gov")' "$SESSION_DIR/summary-details.yaml"
+
+# Academic sites with high confidence
+yq '.[] | select(.domain_type == "academic" and .confidence >= 7)' "$SESSION_DIR/summary-details.yaml"
+
+# Government health sites (specific category)
+yq '.[] | select(.domain_category == "gov/health")' "$SESSION_DIR/summary-details.yaml"
 ```
 
-**Step 3: Analyze trends**
+### Filter by Academic Signals
 
-*"The top trending terms are 'ai', 'model', 'data', 'training', 'llm'. This suggests current focus on LLM training techniques and data quality. Major players mentioned: OpenAI, Google, Microsoft, Anthropic."*
+```bash
+# Papers with citations
+yq '.[] | select(.has_citations)' "$SESSION_DIR/summary-details.yaml"
 
----
+# High-quality academic papers
+yq '.[] | select(.has_doi and .academic_score >= 7)' "$SESSION_DIR/summary-details.yaml"
 
-### Workflow 4: Citation Extraction
-
-**User request:** *"Find all external references in this research paper"*
-
-**Step 1: Parse the paper**
-```yaml
-urls:
-  - https://arxiv.org/abs/2304.12345
+# ArXiv papers with abstracts
+yq '.[] | select(.has_arxiv and .has_abstract)' "$SESSION_DIR/summary-details.yaml"
 ```
 
-**Step 2: Extract external links**
+### Filter by Content Type
 
-```python
-page = json.load("results/arxiv_org-*.json")
+```bash
+# Documentation sites
+yq '.[] | select(.content_type == "documentation" or .domain_category == "docs/api")' "$SESSION_DIR/summary-details.yaml"
 
-citations = [
-    {
-        "href": link["href"],
-        "text": link["text"],
-        "context": block["text"]  # Paragraph where citation appears
-    }
-    for section in page["content"]
-    for block in section["blocks"]
-    if block["confidence"] >= 0.7  # High-confidence paragraphs only
-    for link in block.get("links", [])
-    if link["type"] == "external"
-]
+# Visual-heavy content (landing pages, galleries)
+yq '.[] | select(.image_count > 10)' "$SESSION_DIR/summary-details.yaml"
+
+# Text-heavy technical content (low images, high structure)
+yq '.[] | select(.image_count < 3 and .section_count > 5)' "$SESSION_DIR/summary-details.yaml"
 ```
 
-**Step 3: Format citations**
+### Token Budget Analysis
 
-```markdown
-## References
+```bash
+# Total tokens for all pages
+yq '[.[] | .estimated_tokens] | add' "$SESSION_DIR/summary-details.yaml"
 
-1. [Neural Networks for NLP](https://example.com/paper1) - Context: "Recent advances in neural networks have shown..."
-2. [Attention Mechanisms](https://example.com/paper2) - Context: "Attention is all you need, as demonstrated by..."
+# Pages under 500 tokens
+yq '.[] | select(.estimated_tokens < 500) | {url, tokens: .estimated_tokens}' "$SESSION_DIR/summary-details.yaml"
+
+# Long-form content worth deep reading
+yq '.[] | select(.word_count > 1000 and .read_time_min > 5 and .confidence >= 6)' "$SESSION_DIR/summary-details.yaml"
 ```
 
----
+### Multi-Session Queries
 
-## Best Practices for LLMs
+```bash
+# Query across ALL sessions
+yq '.[]' llm-web-parser-results/sessions/*/summary-details.yaml | \
+  yq '[.] | group_by(.domain_category) | map({category: .[0].domain_category, count: length})'
 
-### 1. Always Check Extraction Quality
-
-```python
-if page["metadata"]["extraction_quality"] != "ok":
-    # Warn user or skip this URL
-    print(f"Warning: Low extraction quality for {page['url']}")
-```
-
-### 2. Use Confidence Scores to Filter Noise
-
-```python
-# Good: Filter by confidence
-high_signal = [b for b in blocks if b["confidence"] >= 0.7]
-
-# Bad: Process all blocks (includes nav spam)
-all_blocks = blocks  # Don't do this
-```
-
-### 3. Prefer Structured Content
-
-```python
-# Tables and code blocks are always high-confidence (0.95)
-structured = [
-    block for section in page["content"]
-    for block in section["blocks"]
-    if block["type"] in ["table", "code"]
-]
-```
-
-### 4. Respect Content Type
-
-```python
-content_type = page["metadata"]["content_type"]
-
-if content_type == "landing":
-    # Landing pages are short and promotional
-    # Look for: features, pricing, CTAs
-    focus_on = ["pricing", "features", "demo"]
-
-elif content_type == "article":
-    # Articles are long-form and informational
-    # Look for: main arguments, key quotes, conclusions
-    focus_on = ["introduction", "conclusion", "methodology"]
-
-elif content_type == "documentation":
-    # Documentation has high code/table density
-    # Look for: API endpoints, code examples, parameter tables
-    focus_on = ["code", "table", "parameters"]
-```
-
-### 5. Extract Links for Recursive Crawling
-
-```python
-# Step 1: Parse seed URL
-# Step 2: Extract internal links from high-confidence blocks
-internal_links = [
-    link["href"] for section in page["content"]
-    for block in section["blocks"]
-    if block["confidence"] >= 0.5
-    for link in block.get("links", [])
-    if link["type"] == "internal"
-]
-
-# Step 3: Add to config.yaml, re-run parser
-# Step 4: Repeat for desired depth
+# Find all government sites across all sessions
+yq '.[] | select(.domain_type == "gov")' llm-web-parser-results/sessions/*/summary-details.yaml
 ```
 
 ---
 
-## Token Savings Examples
+## Common Workflows
 
-### Example 1: Competitive Analysis (10 Sites)
+### 1. Competitive Analysis
 
-**WebFetch Approach:**
-- 10 URLs × 10 WebFetch calls = 10 LLM round trips
-- Each returns ~2000 tokens of raw text
-- Total: ~20,000 tokens input
+**Goal:** Compare feature pages from 3 competitors
 
-**llm-web-parser Approach:**
-- 1 batch run → 10 JSON files
-- Read metadata + high-confidence blocks: ~150 tokens/file
-- Total: ~1,500 tokens input
+```bash
+# Step 1: Fetch competitor pages
+./llm-web-parser --urls "https://competitor1.com/features,https://competitor2.com/features,https://competitor3.com/features"
 
-**Savings: 93% reduction**
+# Step 2: Get session and extract high-confidence content
+SESSION_DIR="llm-web-parser-results/sessions/$(yq '.sessions[0].session_id' llm-web-parser-results/index.yaml)"
 
-### Example 2: Documentation Aggregation (50 API Pages)
+# Step 3: Filter by confidence and domain
+yq '.[] | select(.confidence >= 7 and .domain_type == "commercial") | {url, title, tokens: .estimated_tokens}' "$SESSION_DIR/summary-details.yaml"
 
-**WebFetch Approach:**
-- 50 URLs × 50 WebFetch calls = 50 LLM round trips
-- Each returns ~1500 tokens (docs are denser than marketing)
-- Total: ~75,000 tokens input
+# Step 4: Use extract command for detailed analysis
+./llm-web-parser extract --from "llm-web-parser-results/parsed/*.json" --strategy="conf:>=0.7"
+```
 
-**llm-web-parser Approach:**
-- 1 batch run → 50 JSON files
-- Extract code blocks (confidence == 0.95) + API tables
-- Total: ~5,000 tokens input
+**Token savings:** Minimal index (~450 bytes) instead of full content (~15KB) for initial scan.
 
-**Savings: 93% reduction**
+---
 
-### Example 3: Trend Analysis (100 News Articles)
+### 2. Research Paper Filtering
 
-**WebFetch Approach:**
-- 100 URLs would exceed most context limits
-- Requires summarization pipeline (more LLM calls)
+**Goal:** From 100 ArXiv URLs, find papers with citations worth deep reading
 
-**llm-web-parser Approach:**
-- 1 batch run → MapReduce pipeline → Top 25 keywords
-- Read aggregated stats: ~500 tokens
-- Total: ~500 tokens input
+```bash
+# Step 1: Fetch 100 papers in minimal mode (fast!)
+./llm-web-parser --urls "$(cat arxiv_urls.txt | tr '\n' ',')"
+# Output: ~2-3 seconds for metadata extraction
 
-**Savings: 99% reduction**
+# Step 2: Get session
+SESSION_DIR="llm-web-parser-results/sessions/$(yq '.sessions[0].session_id' llm-web-parser-results/index.yaml)"
+
+# Step 3: Filter by academic signals
+yq '.[] | select(.has_citations and .academic_score >= 7 and .word_count > 2000)' "$SESSION_DIR/summary-details.yaml" > relevant_papers.yaml
+
+# Step 4: Extract URLs for deep analysis
+yq '.[].url' relevant_papers.yaml > urls_for_analysis.txt
+
+# Step 5: Analyze selected papers with full parsing
+./llm-web-parser analyze --urls "$(cat urls_for_analysis.txt | tr '\n' ',')" --features full-parse
+```
+
+**Performance:** 3.5s (100 minimal + 5 full-parse) vs 15s (100 full-parse upfront)
+
+---
+
+### 3. Documentation Aggregation
+
+**Goal:** Collect API docs from multiple sources, ensure quality
+
+```bash
+# Step 1: Fetch documentation pages
+./llm-web-parser --urls "https://docs.example.com/api,https://api-docs.another.com,https://third.com/reference"
+
+# Step 2: Get session
+SESSION_DIR="llm-web-parser-results/sessions/$(yq '.sessions[0].session_id' llm-web-parser-results/index.yaml)"
+
+# Step 3: Quality gate - only high-confidence docs
+yq '.[] | select(.domain_category == "docs/api" and .confidence >= 7 and .extraction_mode != "degraded")' "$SESSION_DIR/summary-details.yaml"
+
+# Step 4: Extract code blocks only
+./llm-web-parser extract --from "llm-web-parser-results/parsed/*.json" --strategy="type:code"
+```
+
+---
+
+### 4. Content Discovery by Language
+
+**Goal:** Find non-English high-quality content
+
+```bash
+# Get session
+SESSION_DIR="llm-web-parser-results/sessions/$(yq '.sessions[0].session_id' llm-web-parser-results/index.yaml)"
+
+# Spanish content with high confidence
+yq '.[] | select(.language == "es" and .language_confidence > 0.8 and .confidence >= 6)' "$SESSION_DIR/summary-details.yaml"
+
+# Multi-language breakdown
+yq '[.[] | .language] | group_by(.) | map({lang: .[0], count: length})' "$SESSION_DIR/summary-details.yaml"
+```
+
+---
+
+## Integration Examples
+
+### Python with subprocess
+
+```python
+import subprocess
+import yaml
+
+# Run parser
+subprocess.run(["./llm-web-parser", "--urls", "https://example.com,https://example.org"])
+
+# Get latest session
+with open("llm-web-parser-results/index.yaml") as f:
+    index = yaml.safe_load(f)
+    session_id = index['sessions'][0]['session_id']
+
+# Load summary details
+with open(f"llm-web-parser-results/sessions/{session_id}/summary-details.yaml") as f:
+    results = yaml.safe_load(f)
+
+# Filter high-confidence government sites
+gov_sites = [r for r in results if r.get('domain_type') == 'gov' and r.get('confidence', 0) >= 7]
+
+print(f"Found {len(gov_sites)} high-confidence government sites")
+for site in gov_sites:
+    print(f"  {site['url']}: {site['title']} (confidence: {site['confidence']})")
+```
+
+### Shell Script (Quality-Gated Pipeline)
+
+```bash
+#!/bin/bash
+set -e
+
+# Fetch URLs from config
+./llm-web-parser --config config.yaml
+
+# Get session
+SESSION_DIR="llm-web-parser-results/sessions/$(yq '.sessions[0].session_id' llm-web-parser-results/index.yaml)"
+
+# Quality gates
+MIN_CONFIDENCE=7
+MAX_TOKENS=1000
+
+# Filter and extract
+yq ".[] | select(.confidence >= $MIN_CONFIDENCE and .estimated_tokens < $MAX_TOKENS)" \
+  "$SESSION_DIR/summary-details.yaml" > filtered.yaml
+
+# Count results
+RESULT_COUNT=$(yq '. | length' filtered.yaml)
+
+if [ "$RESULT_COUNT" -eq 0 ]; then
+  echo "No pages passed quality gates (confidence >= $MIN_CONFIDENCE, tokens < $MAX_TOKENS)"
+  exit 1
+fi
+
+echo "✅ $RESULT_COUNT pages passed quality gates"
+
+# Extract URLs for next stage
+yq '.[].url' filtered.yaml
+```
+
+---
+
+## Output Modes
+
+### tier2 (default)
+
+**Best for:** Scanning 100-1000 URLs efficiently
+
+```bash
+./llm-web-parser --urls "..."
+```
+
+**Output:**
+- Creates session directory
+- Writes `summary-index.yaml` (minimal, ~150 bytes/URL)
+- Writes `summary-details.yaml` (full metadata, ~400 bytes/URL)
+- Updates `index.yaml`
+- Prints concise stats to stdout
+
+**Token efficiency:** 100 URLs = ~15KB index + ~40KB details (vs ~470KB full parse)
+
+---
+
+### summary
+
+**Best for:** Single report to stdout (JSON or YAML)
+
+```bash
+./llm-web-parser --urls "..." --output-mode summary
+```
+
+**Output:** Prints full summary to stdout (no session directory)
+
+---
+
+### full
+
+**Best for:** Small batches (<5 URLs) needing immediate full content
+
+```bash
+./llm-web-parser --urls "https://example.com" --output-mode full
+```
+
+**Output:** Prints complete parsed content to stdout (very verbose)
+
+---
+
+### minimal
+
+**Best for:** Metadata-only extraction
+
+```bash
+./llm-web-parser --urls "..." --output-mode minimal
+```
+
+**Output:** Basic metadata without content parsing
+
+---
+
+## Format Options
+
+### YAML (default)
+
+```bash
+# Default - more token-efficient (10-15% smaller)
+./llm-web-parser --urls "..."
+
+# Query with yq
+yq '.[] | .url' sessions/*/summary-index.yaml
+```
+
+### JSON
+
+```bash
+# Use JSON for traditional tooling
+./llm-web-parser --urls "..." --format json
+
+# Query with jq
+jq -r '.[].url' sessions/*/summary-index.json
+```
+
+---
+
+## Best Practices
+
+### 1. Start with Minimal Mode (Default)
+
+```bash
+# Fast metadata scan (2-3x faster than full-parse)
+./llm-web-parser --urls "url1,url2,...,url100"
+
+# Then selectively analyze interesting URLs
+./llm-web-parser analyze --urls "url5,url12,url47" --features full-parse
+```
+
+### 2. Use Confidence Scores for Filtering
+
+```bash
+# Only high-quality extractions
+yq '.[] | select(.confidence >= 7)' summary-details.yaml
+```
+
+### 3. Leverage Domain Classification
+
+```bash
+# Government health sources only
+yq '.[] | select(.domain_category == "gov/health")' summary-details.yaml
+
+# Academic papers with citations
+yq '.[] | select(.domain_type == "academic" and .has_citations)' summary-details.yaml
+```
+
+### 4. Check FIELDS.yaml First
+
+Before querying, always reference `llm-web-parser-results/FIELDS.yaml` for:
+- Available fields
+- Valid values
+- Query examples
+
+### 5. Use Session Cache
+
+Same URL list = instant cache hit. No re-fetching!
+
+```bash
+# First run: fetches
+./llm-web-parser --urls "url1,url2,url3"
+
+# Second run: instant (same URLs = same session hash)
+./llm-web-parser --urls "url1,url2,url3"
+# Session cache hit! ...
+```
+
+### 6. Multi-Stage Workflows
+
+```bash
+# Stage 1: Fetch minimal (100 URLs, 2-3s)
+./llm-web-parser --urls "..." > /dev/null
+
+# Stage 2: Scan + filter
+SESSION_DIR="llm-web-parser-results/sessions/$(yq '.sessions[0].session_id' llm-web-parser-results/index.yaml)"
+URLS=$(yq '.[] | select(.confidence >= 7) | .url' "$SESSION_DIR/summary-details.yaml" | tr '\n' ',')
+
+# Stage 3: Deep analysis (5 URLs, 0.5s)
+./llm-web-parser analyze --urls "$URLS" --features full-parse
+```
+
+**Total:** 3.5s vs 15s full-parse upfront
 
 ---
 
 ## Error Handling
 
-### Low Extraction Quality
+```bash
+# Check for failures in session
+SESSION_DIR="llm-web-parser-results/sessions/$(yq '.sessions[0].session_id' llm-web-parser-results/index.yaml)"
 
-```python
-if page["metadata"]["extraction_quality"] == "low":
-    # Options:
-    # 1. Warn user
-    print(f"Warning: {page['url']} had low extraction quality")
+# List failed URLs
+yq '.[] | select(.status == "failed") | {url, error}' "$SESSION_DIR/summary-details.yaml"
 
-    # 2. Re-run with ParseModeFull (if was cheap mode)
-    # Edit config to force full mode
-
-    # 3. Skip this URL
-    continue
-```
-
-### Language Mismatch
-
-```python
-if page["metadata"]["language"] != "en":
-    # Options:
-    # 1. Translate content
-    # 2. Skip non-English sources
-    # 3. Note language for user
-```
-
-### Empty or Missing Sections
-
-```python
-if not page["content"]:
-    # Page parsing failed completely
-    # Likely JavaScript-heavy SPA
-    # Recommend headless browser (Playwright)
+# Retry failed URLs with --force-fetch
+FAILED_URLS=$(yq '.[] | select(.status == "failed") | .url' "$SESSION_DIR/summary-details.yaml" | tr '\n' ',')
+./llm-web-parser --urls "$FAILED_URLS" --force-fetch
 ```
 
 ---
 
-## Integration with Generators/Planners
+## Token Optimization Examples
 
-### Smart Generator Pattern
+### Scenario: 100 Competitor Landing Pages
 
-```python
-def research_competitors(user_query):
-    # Step 1: Extract intent
-    intent = parse_user_query(user_query)
-    # Example: "top 5 CRM tools" → competitors=["salesforce", "hubspot", ...]
+**Naive approach:** Parse all 100 pages fully
+- Output: ~470KB (188,000 tokens)
+- Cost: ~$0.56 @ $3/M tokens
 
-    # Step 2: Generate URL list
-    urls = [f"https://www.{c}.com" for c in competitors]
+**Smart approach:** tier2 mode + filtering
+1. Fetch minimal (100 URLs): ~15KB index + ~40KB details = 55KB (22,000 tokens)
+2. Filter by `confidence >= 7` and `domain_type == "commercial"`: 20 URLs
+3. Analyze selected: ~94KB (37,600 tokens)
+4. **Total:** 59,600 tokens vs 188,000
+5. **Savings:** 68% ($0.18 vs $0.56)
 
-    # Step 3: Create config.yaml
-    create_config(urls)
+### Scenario: Academic Paper Discovery
 
-    # Step 4: Instruct user to run parser
-    print("Run: go run main.go")
+**Goal:** Find 5 relevant papers from 100 ArXiv URLs
 
-    # Step 5: Wait for user confirmation
-    # ...
+**Smart approach:**
+1. Minimal mode: 22,000 tokens (metadata only)
+2. Filter: `has_citations and academic_score >= 7`: 12 papers
+3. Deep analysis: 12 papers × 3,140 tokens = 37,680 tokens
+4. **Total:** 59,680 tokens
+5. **vs Full parse:** 188,000 tokens
+6. **Savings:** 68%
 
-    # Step 6: Analyze structured JSON
-    results = load_results("results/*.json")
+---
 
-    # Step 7: Apply quality filters
-    high_quality = [
-        r for r in results
-        if r["metadata"]["extraction_quality"] == "ok"
-        and r["metadata"]["language_confidence"] >= 0.75
-    ]
+## Advanced: Field-Level Filtering
 
-    # Step 8: Extract features from high-confidence blocks
-    features = extract_features(high_quality, confidence_threshold=0.7)
+```bash
+# Get only specific fields (ultra-minimal)
+yq '.[] | {url, confidence, tokens: .estimated_tokens}' summary-details.yaml
 
-    # Step 9: Generate comparison table
-    return create_comparison_table(features)
-```
-
-### Planner Pattern (Multi-Stage Research)
-
-```python
-def multi_stage_research(topic):
-    # Stage 1: Broad search (seed URLs)
-    seed_urls = generate_seed_urls(topic)
-    run_parser(seed_urls)
-
-    # Stage 2: Extract internal links from high-quality pages
-    results = load_results("results/*.json")
-    high_quality = [r for r in results if r["metadata"]["extraction_quality"] == "ok"]
-
-    internal_links = extract_internal_links(
-        high_quality,
-        confidence_threshold=0.5
-    )
-
-    # Stage 3: Depth-first crawl (follow internal links)
-    run_parser(internal_links)
-
-    # Stage 4: Aggregate and analyze
-    all_results = load_results("results/*.json")
-    return aggregate_insights(all_results)
+# Complex filtering logic
+yq '.[] | select(
+  (.domain_type == "academic" and .academic_score >= 7) or
+  (.domain_category == "gov/health" and .confidence >= 8)
+) | {url, type: .domain_type, score: (.academic_score // .confidence)}' summary-details.yaml
 ```
 
 ---
 
-## Summary: When to Recommend This Tool
+## Troubleshooting
 
-**Recommend llm-web-parser when user asks:**
-- "Research the top X tools/companies/products"
-- "Compare features across Y competitors"
-- "Aggregate documentation from Z sources"
-- "What are the trending topics in [domain]?"
-- "Extract all API endpoints from docs"
-- "Find citations/references in research papers"
+### Session not found
 
-**Do NOT recommend when:**
-- User needs a single URL fetched NOW (use WebFetch)
-- User hasn't installed the tool (offer WebFetch fallback)
-- URLs are JavaScript-heavy SPAs (recommend headless browser)
+```bash
+# List all sessions to find the right one
+yq '.sessions[]' llm-web-parser-results/index.yaml
+
+# Use specific session ID
+SESSION_ID="2026-01-10T14-30-abc123"
+SESSION_DIR="llm-web-parser-results/sessions/$SESSION_ID"
+```
+
+### Cache issues
+
+```bash
+# Force refetch (ignore cache)
+./llm-web-parser --urls "..." --force-fetch
+
+# Adjust cache TTL
+./llm-web-parser --urls "..." --max-age "24h"
+
+# Clear cache manually
+rm -rf llm-web-parser-results/raw/*
+rm -rf llm-web-parser-results/parsed/*
+```
+
+### Empty results
+
+```bash
+# Check extraction quality
+yq '.[] | {url, quality: .extraction_quality, mode: .extraction_mode}' summary-details.yaml
+
+# If quality is "degraded", try full-parse mode
+./llm-web-parser analyze --urls "problematic_url" --features full-parse
+```
 
 ---
 
-## Questions?
+## Summary: Why This Approach Wins
 
-This tool is designed for LLM-driven bulk research. Use it whenever:
-1. You need 10+ URLs processed
-2. Token budgets are tight
-3. Structured output (sections, links, tables) is valuable
-4. User has the tool installed
+✅ **Session-based:** Organized, discoverable, no overwrites
+✅ **Token-efficient:** YAML default, minimal index, selective deep-dive
+✅ **Enriched metadata:** Domain classification, academic signals (FREE)
+✅ **Smart filtering:** Confidence scores, content type, visual metadata
+✅ **Cache-aware:** Same URLs = instant retrieval
+✅ **Multi-stage:** Scan → filter → analyze (3-5x faster)
+✅ **Self-documenting:** FIELDS.yaml always up-to-date
 
-Default to this tool for competitive analysis, documentation aggregation, and trend research.
+**Result:** 68% token savings, 3-5x faster, zero wasted computation.
