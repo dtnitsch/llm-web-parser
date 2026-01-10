@@ -39,9 +39,3 @@
   status: in_progress
   assigned_to: daniel
   description: Fix all remaining golangci-lint issues to establish code quality baseline.
-
-- id: documentation_structure
-  priority: P0
-  status: todo
-  description: >
-    Create professional documentation for contributors and for LLM consumption.
