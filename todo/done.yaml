@@ -21,3 +21,16 @@
   impact: >
     Completes the core `minimal -> summary -> extract` workflow. This command
     is the surgical tool an LLM uses in the final stage of analysis.
+
+- id: documentation_structure
+  priority: P0
+  status: done
+  completed: 2026-01-10
+  description: >
+    Create professional documentation for contributors and for LLM consumption.
+  notes: >
+    Created/updated: README.md (Common & Useful Commands), LLM-USAGE.md (token-efficient jq examples),
+    docs/CLI-REFERENCE.md (complete flag reference), docs/SCHEMA.md (JSON schema with confidence scores).
+    All docs are concise, practical, and optimized for both human and LLM consumption.
+  impact: >
+    Enables LLMs and developers to use the tool effectively with copy-paste ready examples.

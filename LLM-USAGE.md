@@ -23,9 +23,9 @@ This document is written for LLM consumption. If you're an LLM reading this, fol
 
 ---
 
-## Quick Integration Pattern
+## Quick Integration Pattern (Modern CLI)
 
-### Step 1: Generate URL List
+### Step 1: Generate URL List & Fetch
 
 When user says: *"Research the top 10 project management tools"*
 
@@ -33,62 +33,129 @@ When user says: *"Research the top 10 project management tools"*
 ```markdown
 I'll research the top 10 project management tools using llm-web-parser for efficient bulk fetching.
 
-First, let me identify the URLs to scrape:
-- https://www.asana.com
-- https://monday.com
-- https://www.notion.so
-- https://trello.com
-- https://clickup.com
-- https://www.wrike.com
-- https://basecamp.com
-- https://www.smartsheet.com
-- https://airtable.com
-- https://www.teamwork.com
-```
-
-### Step 2: Generate config.yaml
-
-```yaml
-urls:
-  - https://www.asana.com
-  - https://monday.com
-  - https://www.notion.so
-  - https://trello.com
-  - https://clickup.com
-  - https://www.wrike.com
-  - https://basecamp.com
-  - https://www.smartsheet.com
-  - https://airtable.com
-  - https://www.teamwork.com
-```
-
-### Step 3: Instruct User
-
-```markdown
-I've created config.yaml with 10 project management tool URLs.
-
-Run this command in /Users/daniel.nitsch/ais/projects/llm-web-parser:
+Run this command:
 ```bash
-go run main.go
+cd /path/to/llm-web-parser
+./llm-web-parser fetch --quiet --urls "\
+https://www.asana.com,\
+https://monday.com,\
+https://www.notion.so,\
+https://trello.com,\
+https://clickup.com,\
+https://www.wrike.com,\
+https://basecamp.com,\
+https://www.smartsheet.com,\
+https://airtable.com,\
+https://www.teamwork.com"
 ```
 
-This will fetch all 10 sites in parallel (~30 seconds) and save structured JSON to results/.
+This will fetch all 10 sites in parallel (~5 seconds) and save to llm-web-parser-results/.
 
 Let me know when it's done, and I'll analyze the results.
 ```
 
-### Step 4: Analyze Results
+### Step 2: Analyze Results with Token-Efficient Queries
 
 ```markdown
-Now I'll analyze the structured JSON output:
+Now I'll use jq to extract insights efficiently:
+
 ```bash
-ls results/*.json
+# Quick overview - what succeeded?
+jq -r '.results[] | "\(.url): \(.status)"' output.json
+
+# Get only high-quality extractions
+jq -r '.results[] | select(.extraction_quality == "ok" and .estimated_tokens < 1000) | .url' output.json
+
+# Total token budget for all pages
+jq '.results | map(.estimated_tokens) | add' output.json
 ```
 
-Reading results and extracting:
-- Features (from blocks with confidence > 0.7)
-- Pricing (from tables with confidence == 0.95)
-- Target audience (from landing page metadata)
+For detailed analysis, I'll read specific parsed files and filter by confidence:
+
+```bash
+# Extract features (high-confidence paragraphs only)
+jq -r '.content[].blocks[] | select(.confidence >= 0.8 and .type == "p") | .text' llm-web-parser-results/parsed/www_asana_com-*.json
+
+# Extract pricing tables (always 0.95 confidence)
+jq '.content[].blocks[] | select(.type == "table") | .table' llm-web-parser-results/parsed/*.json
+```
+```
+
+---
+
+## Token-Efficient Data Analysis
+
+### Shell Oneliners for Quick Queries
+
+**Get all page titles across files:**
+```bash
+jq -r '.title' llm-web-parser-results/parsed/*.json
+```
+
+**Count high-confidence blocks per file:**
+```bash
+for file in llm-web-parser-results/parsed/*.json; do
+  echo "$file: $(jq '[.content[].blocks[] | select(.confidence >= 0.7)] | length' "$file")"
+done
+```
+
+**Extract only high-confidence paragraphs (200 char preview):**
+```bash
+jq -r '.content[].blocks[] | select(.confidence >= 0.8 and .type == "p") | .text[:200]' file.json
+```
+
+**Find all code blocks across files:**
+```bash
+jq -r '.content[].blocks[] | select(.type == "code") | "\(.code.language): \(.code.content[:100])"' llm-web-parser-results/parsed/*.json
+```
+
+**Get metadata summary for all files:**
+```bash
+jq -s 'map({url, tokens: .metadata.estimated_tokens, quality: .metadata.extraction_quality, type: .metadata.content_type})' llm-web-parser-results/parsed/*.json
+```
+
+**Count total estimated tokens:**
+```bash
+jq -s 'map(.metadata.estimated_tokens) | add' llm-web-parser-results/parsed/*.json
+```
+
+### Using Extract Command (50-80% Token Savings)
+
+**Get only high-confidence content:**
+```bash
+./llm-web-parser extract --from 'llm-web-parser-results/parsed/*.json' --strategy="conf:>=0.7" > filtered.json
+```
+
+**Extract only code blocks (documentation analysis):**
+```bash
+./llm-web-parser extract --from 'llm-web-parser-results/parsed/*.json' --strategy="type:code" > code-only.json
+```
+
+**Combined filters (high-confidence paragraphs only):**
+```bash
+./llm-web-parser extract --from 'llm-web-parser-results/parsed/*.json' --strategy="conf:>=0.8,type:p" > summaries.json
+```
+
+**Extract headings only (TOC generation):**
+```bash
+./llm-web-parser extract --from 'llm-web-parser-results/parsed/*.json' --strategy="type:h2" > toc.json
+```
+
+### Multi-File Analysis Patterns
+
+**Find pages mentioning specific keywords:**
+```bash
+jq -r 'select(.content[].blocks[].text | test("API authentication"; "i")) | .url' llm-web-parser-results/parsed/*.json
+```
+
+**Get all external links (citation extraction):**
+```bash
+jq -r '.content[].blocks[].links[]? | select(.type == "external") | .href' llm-web-parser-results/parsed/*.json | sort -u
+```
+
+**Aggregate confidence distribution:**
+```bash
+jq -s '[.[] | .content[].blocks[] | .confidence] | group_by(. >= 0.7) | map({high: (. | map(select(. >= 0.7)) | length), low: (. | map(select(. < 0.7)) | length)})' llm-web-parser-results/parsed/*.json
 ```
 
 ---

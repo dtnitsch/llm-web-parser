@@ -32,31 +32,74 @@ LLM web scraping is broken:
 ## Quick Start
 
 ```bash
-# 1. Clone and install
+# 1. Clone and build
 git clone https://github.com/dtnitsch/llm-web-parser.git
 cd llm-web-parser
-go mod download
+go build .
 
-# 2. Create config.yaml
-cat > config.yaml << 'EOF'
-urls:
-  - https://docs.python.org/3/library/asyncio.html
-  - https://fastapi.tiangolo.com
-  - https://pydantic-docs.helpmanual.io
-worker_count: 8
-EOF
+# 2. Fetch and parse URLs
+./llm-web-parser fetch --urls "https://docs.python.org/3/library/asyncio.html,https://fastapi.tiangolo.com" --quiet
 
-# 3. Run parser
-go run main.go
-
-# 4. Check results
-ls results/
-# docs_python_org-3-library-asyncio_html-2025-12-30.json
-# fastapi_tiangolo_com-2025-12-30.json
-# summary-2025-12-30.json (← start here!)
+# 3. Check results
+ls llm-web-parser-results/parsed/
+# docs_python_org-3-library-asyncio_html-abc123.json
+# fastapi_tiangolo_com-def456.json
+# summary-2026-01-10.json (← start here!)
 ```
 
-**Pro tip:** Read `summary-2025-12-30.json` first (3-5k tokens) to see what's available, then deep-dive into specific files.
+**Pro tip:** Read `summary-*.json` first (3-5k tokens) to see what's available, then deep-dive into specific files.
+
+---
+
+## Common & Useful Commands
+
+### Working with Parsed JSON
+
+```bash
+# Get all page titles
+jq -r '.title' llm-web-parser-results/parsed/*.json
+
+# Count high-confidence blocks per file
+jq '[.content[].blocks[] | select(.confidence >= 0.7)] | length' file.json
+
+# Extract high-confidence paragraphs (200 char preview)
+jq -r '.content[].blocks[] | select(.confidence >= 0.8 and .type == "p") | .text[:200]' file.json
+
+# Find all code blocks across files
+jq -r '.content[].blocks[] | select(.type == "code") | .code.content' llm-web-parser-results/parsed/*.json
+
+# Get metadata summary across all files
+jq -s 'map({url, tokens: .metadata.estimated_tokens, quality: .metadata.extraction_quality})' llm-web-parser-results/parsed/*.json
+```
+
+### Using the Extract Command (Token Savings!)
+
+```bash
+# Get only high-confidence content (save 50-80% tokens)
+./llm-web-parser extract --from 'llm-web-parser-results/parsed/*.json' --strategy="conf:>=0.7"
+
+# Get only code blocks
+./llm-web-parser extract --from 'llm-web-parser-results/parsed/*.json' --strategy="type:code"
+
+# Combined: high-confidence paragraphs only
+./llm-web-parser extract --from 'llm-web-parser-results/parsed/*.json' --strategy="conf:>=0.8,type:p"
+```
+
+### Fetch Command Options
+
+```bash
+# Quiet mode (suppress logs)
+./llm-web-parser fetch --urls "https://example.com" --quiet
+
+# Force refetch (ignore cache)
+./llm-web-parser fetch --urls "https://example.com" --force-fetch
+
+# Adjust cache age
+./llm-web-parser fetch --urls "https://example.com" --max-age "24h"
+
+# Summary output (default, most token-efficient)
+./llm-web-parser fetch --urls "https://example.com" --output-mode summary
+```
 
 ---
 
