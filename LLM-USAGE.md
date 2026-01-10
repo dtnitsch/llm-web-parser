@@ -33,10 +33,12 @@ llm-web-parser-results/
 ├── sessions/
 │   ├── 2026-01-10T14-30-abc123/  ← Timestamp-first for discovery
 │   │   ├── summary-index.yaml    ← Minimal scannable data
-│   │   └── summary-details.yaml  ← Full enriched metadata
+│   │   ├── summary-details.yaml  ← Full enriched metadata
+│   │   └── failed-urls.yaml      ← Failed URLs (only if errors occurred)
 │   └── 2026-01-10T15-45-def456/
 │       ├── summary-index.yaml
-│       └── summary-details.yaml
+│       ├── summary-details.yaml
+│       └── failed-urls.yaml
 ├── raw/                          ← Shared HTML cache
 └── parsed/                       ← Shared JSON cache
 ```
@@ -67,6 +69,88 @@ yq '.sessions[] | select(.session_id | test("2026-01-10"))' llm-web-parser-resul
 ```
 
 **Same URLs = Same session hash = Instant retrieval (no re-fetching)**
+
+### Error Handling & Failed URLs
+
+#### URL Pre-Validation (Fail Fast)
+
+All URLs are validated **before** any fetching begins. If any URL is malformed, the tool exits immediately with all invalid URLs listed:
+
+```bash
+./llm-web-parser --urls "not-a-url,ftp://badscheme.com,https://good.com"
+
+# Output:
+# Error: 2 URL(s) are malformed:
+#   - not-a-url
+#   - ftp://badscheme.com
+```
+
+**Validation checks:**
+- Valid HTTP/HTTPS scheme
+- Proper domain format
+- No invalid characters
+- URL structure integrity
+
+#### Runtime Failures (failed-urls.yaml)
+
+If URLs fail during fetch/parse (404, timeout, network error), they're logged to `failed-urls.yaml`:
+
+```yaml
+failed_urls:
+  - url: https://example.com/404
+    status_code: 404
+    error_type: http_error
+    error_message: "Not Found"
+
+  - url: https://timeout.example.com
+    status_code: 0
+    error_type: network_error
+    error_message: "connection timeout after 30s"
+```
+
+**Error types:**
+- `http_error` - 4xx/5xx status codes
+- `network_error` - Connection failures
+- `timeout` - Request timeouts
+- `parse_error` - HTML parsing failed
+- `fetch_error` - Generic fetch failure
+
+#### Querying Failed URLs
+
+```bash
+# Get latest session
+SESSION=$(yq '.sessions[0].session_id' llm-web-parser-results/index.yaml)
+
+# View all failures
+yq '.failed_urls[]' llm-web-parser-results/sessions/$SESSION/failed-urls.yaml
+
+# Filter by error type
+yq '.failed_urls[] | select(.error_type == "http_error")' \
+  llm-web-parser-results/sessions/$SESSION/failed-urls.yaml
+
+# Count failures by type
+yq '.failed_urls | group_by(.error_type) | .[] | {
+  "type": .[0].error_type,
+  "count": length
+}' llm-web-parser-results/sessions/$SESSION/failed-urls.yaml
+```
+
+#### Token-Efficient Error Output
+
+**Before:** Errors printed to stderr (thousands of tokens with many failures)
+```
+ERROR: failed to fetch https://site1.com: timeout
+ERROR: failed to fetch https://site2.com: 404 not found
+ERROR: failed to fetch https://site3.com: connection refused
+...
+```
+
+**After:** Concise summary + structured YAML file
+```
+Parsed 50 URLs - 45 success, 5 failed (see sessions/2026-01-10T14-30-abc123/failed-urls.yaml).
+```
+
+**Token savings:** ~95% reduction for error-heavy batches
 
 ---
 
