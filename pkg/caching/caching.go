@@ -17,7 +17,7 @@ type Cache struct {
 // NewCache creates a new Cache instance.
 // The cache path will be created if it doesn't exist.
 func NewCache(path string, ttl time.Duration) (*Cache, error) {
-	if err := os.MkdirAll(path, 0755); err != nil {
+	if err := os.MkdirAll(path, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 	return &Cache{
@@ -48,7 +48,7 @@ func (c *Cache) Get(url string) ([]byte, bool) {
 		return nil, false // Cache miss (expired)
 	}
 
-	data, err := os.ReadFile(filePath)
+	data, err := os.ReadFile(filepath.Clean(filePath))
 	if err != nil {
 		return nil, false // Cache miss (read error)
 	}
@@ -59,7 +59,7 @@ func (c *Cache) Get(url string) ([]byte, bool) {
 // Set adds an item to the cache.
 func (c *Cache) Set(url string, data []byte) error {
 	filePath := filepath.Join(c.path, c.key(url))
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write to cache: %w", err)
 	}
 	return nil

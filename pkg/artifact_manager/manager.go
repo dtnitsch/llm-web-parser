@@ -31,10 +31,10 @@ func NewManager(baseDir string, maxAge time.Duration) (*Manager, error) {
 		baseDir = DefaultBaseDir
 	}
 	// Ensure base directories exist
-	if err := os.MkdirAll(filepath.Join(baseDir, RawHTMLDir), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(baseDir, RawHTMLDir), 0750); err != nil {
 		return nil, fmt.Errorf("failed to create raw HTML directory: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Join(baseDir, ParsedJSONDir), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(baseDir, ParsedJSONDir), 0750); err != nil {
 		return nil, fmt.Errorf("failed to create parsed JSON directory: %w", err)
 	}
 
@@ -138,7 +138,7 @@ func (m *Manager) GetRawHTML(url string) ([]byte, bool, error) {
     // If maxAge is negative, it means "never expire"
     // In this case, always fresh if exists.
 
-	data, err := os.ReadFile(filePath)
+	data, err := os.ReadFile(filepath.Clean(filePath))
 	if err != nil {
 		return nil, false, fmt.Errorf("error reading raw HTML artifact: %w", err)
 	}
@@ -151,7 +151,10 @@ func (m *Manager) SetRawHTML(url string, data []byte) error {
     if err != nil {
         return err
     }
-	return os.WriteFile(filePath, data, 0644)
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write raw HTML: %w", err)
+	}
+	return nil
 }
 
 // GetParsedJSON retrieves parsed JSON from storage if fresh.
@@ -175,7 +178,7 @@ func (m *Manager) GetParsedJSON(url string) ([]byte, bool, error) {
     // If maxAge is negative, it means "never expire"
     // In this case, always fresh if exists.
 
-	data, err := os.ReadFile(filePath)
+	data, err := os.ReadFile(filepath.Clean(filePath))
 	if err != nil {
 		return nil, false, fmt.Errorf("error reading parsed JSON artifact: %w", err)
 	}
@@ -188,7 +191,10 @@ func (m *Manager) SetParsedJSON(url string, data []byte) error {
     if err != nil {
         return err
     }
-	return os.WriteFile(filePath, data, 0644)
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write parsed JSON: %w", err)
+	}
+	return nil
 }
 
 // MaxAge returns the configured max age for artifacts.

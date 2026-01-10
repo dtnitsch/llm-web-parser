@@ -7,9 +7,11 @@ import (
 	lingua "github.com/pemistahl/lingua-go"
 )
 
+// LinkType represents the type of a hyperlink (internal or external).
 type LinkType string
 
 const (
+	// LinkInternal indicates a link to the same domain.
 	LinkInternal LinkType = "internal"
 	LinkExternal LinkType = "external"
 )
@@ -44,11 +46,13 @@ type Section struct {
 	Children []Section      `json:"children,omitempty"`
 }
 
-type Table struct {
+// Table represents a data table extracted from HTML.
+type Table struct{
 	Headers []string   `json:"headers,omitempty"`
 	Rows    [][]string `json:"rows"`
 }
 
+// Code represents a code block extracted from HTML.
 type Code struct {
 	Language string `json:"language,omitempty"`
 	Content  string `json:"content"`
@@ -117,6 +121,7 @@ func flattenSection(sb *strings.Builder, s Section) {
 	}
 }
 
+// ComputeMetadata calculates metadata fields from page content.
 func (p *Page) ComputeMetadata() {
 	if p.Metadata.Computed {
 		return
@@ -145,46 +150,6 @@ func (p *Page) ComputeMetadata() {
 	p.Metadata.Computed = true
 }
 
-func (p *Page) textForAnalysis() string {
-	var sb strings.Builder
-
-	if len(p.Content) > 0 {
-		for _, s := range p.Content {
-			for _, b := range s.Blocks {
-				sb.WriteString(b.Text)
-				sb.WriteString(" ")
-			}
-		}
-		return sb.String()
-	}
-
-	for _, b := range p.FlatContent {
-		sb.WriteString(b.Text)
-		sb.WriteString(" ")
-	}
-
-	return sb.String()
-}
-
-
-func (p *Page) countWords() int {
-	total := 0
-	for _, b := range p.allBlocks() {
-		total += len(strings.Fields(b.Text))
-	}
-	return total
-}
-
-func (p *Page) estimateReadTime(wordCount int) float64 {
-	return float64(wordCount) / 225.0
-}
-
-func (p *Page) countSections() int {
-	if len(p.Content) > 0 {
-		return len(p.Content)
-	}
-	return 0
-}
 
 func (p *Page) countSectionsRecursive(sections []Section) int {
 	count := 0
@@ -195,6 +160,7 @@ func (p *Page) countSectionsRecursive(sections []Section) int {
 	return count
 }
 
+// AllTextBlocks returns all content blocks from the page (flat list).
 func (p *Page) AllTextBlocks() []ContentBlock {
 	var blocks []ContentBlock
 
@@ -222,9 +188,6 @@ func (p *Page) AllTextBlocks() []ContentBlock {
 }
 
 
-func (p *Page) countBlocks() int {
-	return len(p.allBlocks())
-}
 
 func countBlocksByType(p *Page, types ...string) int {
 	set := make(map[string]struct{}, len(types))
@@ -294,7 +257,7 @@ func detectContentType(p *Page) string {
 		score["article"] += 2
 	}
 	if p.Metadata.SectionCount <= 2 {
-		score["landing"] += 1
+		score["landing"]++
 	}
 
 	// Code density
@@ -304,16 +267,16 @@ func detectContentType(p *Page) string {
 
 	// Tables
 	if countBlocksByType(p, "table") > 0 {
-		score["documentation"] += 1
+		score["documentation"]++
 	}
 
 	// Choose best
 	best := "unknown"
-	max := 0
+	maxScore := 0
 	for k, v := range score {
-		if v > max {
+		if v > maxScore {
 			best = k
-			max = v
+			maxScore = v
 		}
 	}
 

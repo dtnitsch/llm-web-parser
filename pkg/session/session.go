@@ -1,3 +1,4 @@
+// Package session manages fetch sessions with caching and indexing.
 package session
 
 import (
@@ -13,8 +14,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// SessionInfo represents metadata about a fetch session.
-type SessionInfo struct {
+// Info represents metadata about a fetch session.
+type Info struct {
 	SessionID   string    `yaml:"session_id"`
 	Created     time.Time `yaml:"created"`
 	URLCount    int       `yaml:"url_count"`
@@ -24,9 +25,9 @@ type SessionInfo struct {
 	URLsPreview []string  `yaml:"urls_preview,omitempty"` // First 3 URLs
 }
 
-// SessionIndex represents the sessions/index.yaml file.
-type SessionIndex struct {
-	Sessions []SessionInfo `yaml:"sessions"`
+// Index represents the sessions/index.yaml file.
+type Index struct {
+	Sessions []Info `yaml:"sessions"`
 }
 
 // GenerateSessionID creates a timestamp-first session ID from a list of URLs.
@@ -63,8 +64,8 @@ func GetSessionsIndexPath(baseDir string) string {
 	return filepath.Join(baseDir, "index.yaml")
 }
 
-// SessionExists checks if a session directory exists and has summary files.
-func SessionExists(baseDir, sessionID string) bool {
+// Exists checks if a session directory exists and has summary files.
+func Exists(baseDir, sessionID string) bool {
 	sessionDir := GetSessionDir(baseDir, sessionID)
 	indexPath := filepath.Join(sessionDir, "summary-index.yaml")
 	detailsPath := filepath.Join(sessionDir, "summary-details.yaml")
@@ -81,7 +82,7 @@ func SessionExists(baseDir, sessionID string) bool {
 func IsSessionFresh(baseDir, sessionID string, maxAge time.Duration) bool {
 	if maxAge <= 0 {
 		// No expiry - always fresh if it exists
-		return SessionExists(baseDir, sessionID)
+		return Exists(baseDir, sessionID)
 	}
 
 	sessionDir := GetSessionDir(baseDir, sessionID)
@@ -102,12 +103,12 @@ func EnsureSessionDir(baseDir, sessionID string) error {
 	sessionsRoot := filepath.Join(baseDir, "sessions")
 
 	// Create sessions/ root
-	if err := os.MkdirAll(sessionsRoot, 0755); err != nil {
+	if err := os.MkdirAll(sessionsRoot, 0750); err != nil {
 		return fmt.Errorf("failed to create sessions directory: %w", err)
 	}
 
 	// Create session-specific directory
-	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+	if err := os.MkdirAll(sessionDir, 0750); err != nil {
 		return fmt.Errorf("failed to create session directory: %w", err)
 	}
 
@@ -115,12 +116,12 @@ func EnsureSessionDir(baseDir, sessionID string) error {
 }
 
 // UpdateSessionIndex adds or updates a session entry in sessions/index.yaml.
-func UpdateSessionIndex(baseDir string, info SessionInfo) error {
+func UpdateSessionIndex(baseDir string, info Info) error {
 	indexPath := GetSessionsIndexPath(baseDir)
 
 	// Read existing index
-	var index SessionIndex
-	data, err := os.ReadFile(indexPath)
+	var index Index
+	data, err := os.ReadFile(filepath.Clean(indexPath))
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to read session index: %w", err)
 	}
@@ -157,7 +158,7 @@ func UpdateSessionIndex(baseDir string, info SessionInfo) error {
 		return fmt.Errorf("failed to marshal session index: %w", err)
 	}
 
-	if err := os.WriteFile(indexPath, output, 0644); err != nil {
+	if err := os.WriteFile(indexPath, output, 0600); err != nil {
 		return fmt.Errorf("failed to write session index: %w", err)
 	}
 
@@ -288,7 +289,7 @@ usage:
   session_index: llm-web-parser-results/index.yaml (list all sessions)
 `
 
-	if err := os.WriteFile(fieldsPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(fieldsPath, []byte(content), 0600); err != nil {
 		return fmt.Errorf("failed to write FIELDS.yaml: %w", err)
 	}
 
