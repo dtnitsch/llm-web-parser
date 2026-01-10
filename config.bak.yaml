@@ -1,0 +1,134 @@
+urls:
+  # Code Standards Best Practices (10 URLs)
+  - https://google.github.io/styleguide/go/  - https://go.dev/doc/effective_go
+  - https://github.com/uber-go/guide/blob/master/style.md
+  - https://dave.cheney.net/practical-go/presentations/gophercon-singapore-2019.html
+  - https://github.com/golang-standards/project-layout
+  - https://go.dev/wiki/CodeReviewComments
+  - https://www.oreilly.com/library/view/go-programming-language/9780134190570/
+  - https://rakyll.org/style-packages/
+  - https://peter.bourgon.org/go-best-practices-2016/
+  - https://github.com/cristaloleg/go-advice
+  # Technical Writing for Standards (8 URLs)
+  - https://developers.google.com/tech-writing  - https://www.writethedocs.org/guide/writing/style-guides/
+  - https://docs.gitlab.com/ee/development/documentation/styleguide/
+  - https://github.com/microsoft/TypeScript-Handbook
+  - https://www.ietf.org/rfc/rfc2119.txt (MUST/SHOULD/MAY keywords)
+  - https://documentation.divio.com/ (Divio documentation system)
+  - https://stripe.com/docs/api
+  - https://www.kubernetes.io/docs/contribute/style/style-guide/
+  # Anti-Patterns and What NOT to Do (8 URLs)
+  - https://martinfowler.com/bliki/TechnicalDebt.html  - https://blog.codinghorror.com/when-understanding-means-rewriting/
+  - https://github.com/dgryski/go-perfbook/blob/master/performance.md
+  - https://www.reddit.com/r/golang/comments/top-posts/ (community discussions on standards)
+  - https://news.ycombinator.com/item?id=18442941 (discussions on Go style)
+  - https://github.com/uber-go/guide/blob/master/style.md#avoid-embedding-types-in-public-structs
+  - https://go.dev/blog/organizing-go-code
+  - https://commandcenter.blogspot.com/2012/06/less-is-exponentially-more.html (Rob Pike on simplicity)
+  # Industry Examples and Real-World Standards (10 URLs)
+  - https://github.com/kubernetes/community/blob/master/contributors/guide/coding-conventions.md  - https://github.com/hashicorp/terraform/blob/main/docs/CODING_STANDARDS.md
+  - https://github.com/etcd-io/etcd/blob/main/Documentation/contributor-guide/coding.md
+  - https://github.com/prometheus/prometheus/blob/main/CONTRIBUTING.md
+  - https://github.com/cockroachdb/cockroach/blob/master/docs/STYLE.md
+  - https://github.com/moby/moby/blob/master/project/CODING-STYLE.md
+  - https://docs.docker.com/contribute/
+  - https://go.dev/doc/contribute
+  - https://github.com/coreos/etcd/blob/master/Documentation/contributor-guide/coding.md
+  - https://github.com/influxdata/influxdb/blob/master/CONTRIBUTING.md
+  # Writing Effective Requirements (6 URLs)
+  - https://www.reqview.com/doc/iso-26262-requirements-best-practices.html  - https://medium.com/@huund/how-to-write-good-requirements-8f0b3e6e1f0
+  - https://www.perforce.com/blog/alm/how-write-software-requirements-specification-srs-document
+  - https://ieeexplore.ieee.org/document/720574 (if accessible - IEEE standards)
+  - https://www.atlassian.com/agile/project-management/requirements
+  - https://www.pmi.org/learning/library/quality-requirements-specifications-6291
+  # Formatting and Structure (8 URLs)
+  - https://github.github.com/gfm/ (GitHub Flavored Markdown)  - https://commonmark.org/help/
+  - https://www.markdownguide.org/basic-syntax/
+  - https://github.com/airbnb/javascript (well-structured style guide example)
+  - https://github.com/prettier/prettier (opinionated formatter philosophy)
+  - https://standardjs.com/rules.html (simple, clear rules presentation)
+  - https://eslint.org/docs/latest/rules/
+  - https://www.python.org/dev/peps/pep-0008/ (PEP 8 as example of effective standards)
+<!--
+  # ========================================
+  # Category 1: Foundational Concepts (7)
+  # ========================================
+  - https://en.wikipedia.org/wiki/Machine_learning
+  - https://en.wikipedia.org/wiki/Deep_learning
+  - https://en.wikipedia.org/wiki/Artificial_intelligence
+  - https://en.wikipedia.org/wiki/Neural_network
+  - https://en.wikipedia.org/wiki/Supervised_learning
+  - https://en.wikipedia.org/wiki/Unsupervised_learning
+  - https://en.wikipedia.org/wiki/Reinforcement_learning
+
+  # ========================================
+  # Category 2: Academic Research (5)
+  # ========================================
+  - https://arxiv.org/list/cs.LG/recent
+  - https://arxiv.org/list/cs.AI/recent
+  - https://paperswithcode.com/methods/category/neural-networks
+  - https://paperswithcode.com/sota
+  - https://distill.pub
+
+  # ========================================
+  # Category 3: Major Frameworks/Libraries (6)
+  # ========================================
+  - https://scikit-learn.org/stable/
+  - https://www.tensorflow.org/learn
+  - https://pytorch.org/tutorials/
+  - https://keras.io/guides/
+  - https://huggingface.co/docs/transformers/index
+  - https://xgboost.readthedocs.io/en/stable/
+
+  # ========================================
+  # Category 4: Industry Leaders/Research Labs (8)
+  # ========================================
+  - https://openai.com/research
+  - https://www.anthropic.com/research
+  - https://ai.google/research/
+  - https://ai.meta.com/research/
+  - https://www.microsoft.com/en-us/research/research-area/artificial-intelligence/
+  - https://deepmind.google/research/
+  - https://www.nvidia.com/en-us/deep-learning-ai/
+  - https://aws.amazon.com/machine-learning/
+
+  # ========================================
+  # Category 5: Educational Resources (5)
+  # ========================================
+  - https://www.coursera.org/learn/machine-learning
+  - https://course.fast.ai
+  - https://www.deeplearning.ai
+  - https://developers.google.com/machine-learning/crash-course
+  - https://www.kaggle.com/learn
+
+  # ========================================
+  # Category 6: News/Blogs/Community (5)
+  # ========================================
+  - https://machinelearningmastery.com
+  - https://towardsdatascience.com
+  - https://www.reddit.com/r/MachineLearning/
+  - https://news.ycombinator.com/item?id=1
+  - https://mlnews.dev
+
+  # ========================================
+  # Category 7: Specific Architectures (2)
+  # ========================================
+  - https://en.wikipedia.org/wiki/Transformer_(machine_learning_model)
+  - https://en.wikipedia.org/wiki/Convolutional_neural_network
+
+  # ========================================
+  # Category 8: Tools/Platforms (2)
+  # ========================================
+  - https://www.mlflow.org
+  - https://wandb.ai/site
+-->
+
+mapreduce:
+  reduce_keys: ["word", "count"]
+
+analytics:
+  keyword_count:
+    keyword_threshold: 20
+
+worker_count: 8
+

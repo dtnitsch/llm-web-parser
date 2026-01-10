@@ -1,76 +1,54 @@
 urls:
-  # ========================================
-  # Category 1: Foundational Concepts (7)
-  # ========================================
-  - https://en.wikipedia.org/wiki/Machine_learning
-  - https://en.wikipedia.org/wiki/Deep_learning
-  - https://en.wikipedia.org/wiki/Artificial_intelligence
-  - https://en.wikipedia.org/wiki/Neural_network
-  - https://en.wikipedia.org/wiki/Supervised_learning
-  - https://en.wikipedia.org/wiki/Unsupervised_learning
-  - https://en.wikipedia.org/wiki/Reinforcement_learning
-
-  # ========================================
-  # Category 2: Academic Research (5)
-  # ========================================
-  - https://arxiv.org/list/cs.LG/recent
-  - https://arxiv.org/list/cs.AI/recent
-  - https://paperswithcode.com/methods/category/neural-networks
-  - https://paperswithcode.com/sota
-  - https://distill.pub
-
-  # ========================================
-  # Category 3: Major Frameworks/Libraries (6)
-  # ========================================
-  - https://scikit-learn.org/stable/
-  - https://www.tensorflow.org/learn
-  - https://pytorch.org/tutorials/
-  - https://keras.io/guides/
-  - https://huggingface.co/docs/transformers/index
-  - https://xgboost.readthedocs.io/en/stable/
-
-  # ========================================
-  # Category 4: Industry Leaders/Research Labs (8)
-  # ========================================
-  - https://openai.com/research
-  - https://www.anthropic.com/research
-  - https://ai.google/research/
-  - https://ai.meta.com/research/
-  - https://www.microsoft.com/en-us/research/research-area/artificial-intelligence/
-  - https://deepmind.google/research/
-  - https://www.nvidia.com/en-us/deep-learning-ai/
-  - https://aws.amazon.com/machine-learning/
-
-  # ========================================
-  # Category 5: Educational Resources (5)
-  # ========================================
-  - https://www.coursera.org/learn/machine-learning
-  - https://course.fast.ai
-  - https://www.deeplearning.ai
-  - https://developers.google.com/machine-learning/crash-course
-  - https://www.kaggle.com/learn
-
-  # ========================================
-  # Category 6: News/Blogs/Community (5)
-  # ========================================
-  - https://machinelearningmastery.com
-  - https://towardsdatascience.com
-  - https://www.reddit.com/r/MachineLearning/
-  - https://news.ycombinator.com/item?id=1
-  - https://mlnews.dev
-
-  # ========================================
-  # Category 7: Specific Architectures (2)
-  # ========================================
-  - https://en.wikipedia.org/wiki/Transformer_(machine_learning_model)
-  - https://en.wikipedia.org/wiki/Convolutional_neural_network
-
-  # ========================================
-  # Category 8: Tools/Platforms (2)
-  # ========================================
-  - https://www.mlflow.org
-  - https://wandb.ai/site
-
+  # Category 1: General Best Practices (10 URLs)
+  - https://www.google.com/search?q=how+to+write+effective+implementation+guides+software+engineering
+  - https://www.google.com/search?q=best+practices+technical+documentation+step-by-step+guides
+  - https://www.google.com/search?q=developer+documentation+guide+structure
+  - https://www.google.com/search?q=technical+writing+implementation+tutorials+best+practices
+  - https://www.google.com/search?q=how+to+write+good+how-to+guides+developers
+  - https://www.google.com/search?q=task-oriented+documentation+best+practices
+  - https://www.google.com/search?q=procedural+documentation+software+engineering
+  - https://www.google.com/search?q=effective+developer+onboarding+guides
+  - https://www.google.com/search?q=technical+tutorial+writing+guide
+  - https://www.google.com/search?q=software+implementation+guide+template
+  # Category 2: Anti-Patterns & What NOT to Do (10 URLs)
+  - https://www.google.com/search?q=common+mistakes+technical+documentation
+  - https://www.google.com/search?q=what+not+to+do+writing+developer+guides
+  - https://www.google.com/search?q=bad+technical+documentation+examples
+  - https://www.google.com/search?q=technical+writing+anti-patterns
+  - https://www.google.com/search?q=worst+practices+developer+documentation
+  - https://www.google.com/search?q=why+developer+documentation+fails
+  - https://www.google.com/search?q=confusing+technical+guides+examples
+  - https://www.google.com/search?q=documentation+mistakes+to+avoid
+  - https://www.google.com/search?q=poorly+written+implementation+guides
+  - https://www.google.com/search?q=technical+documentation+pitfalls
+  # Category 3: Real-World Examples - Best-in-Class (10 URLs)
+  - https://stripe.com/docs/api
+  - https://kubernetes.io/docs/tasks/
+  - https://docs.aws.amazon.com/
+  - https://cloud.google.com/docs/tutorials
+  - https://docs.djangoproject.com/en/stable/intro/tutorial01/
+  - https://go.dev/doc/tutorial/
+  - https://www.twilio.com/docs/usage/tutorials
+  - https://docs.github.com/en/get-started
+  - https://www.digitalocean.com/community/tutorials
+  - https://developer.mozilla.org/en-US/docs/Learn
+  # Category 4: Specific Patterns & Techniques (10 URLs)
+  - https://www.google.com/search?q=progressive+disclosure+technical+documentation
+  - https://www.google.com/search?q=code+examples+in+technical+guides+best+practices
+  - https://www.google.com/search?q=troubleshooting+section+documentation
+  - https://www.google.com/search?q=prerequisites+section+technical+guides
+  - https://www.google.com/search?q=success+criteria+implementation+guides
+  - https://www.google.com/search?q=visual+diagrams+in+how-to+guides
+  - https://www.google.com/search?q=validation+steps+technical+tutorials
+  - https://www.google.com/search?q=common+pitfalls+section+documentation
+  - https://www.google.com/search?q=copy+paste+friendly+code+examples
+  - https://www.google.com/search?q=testing+verification+implementation+guides
+  # Category 5: Go-Specific & Developer Experience (5 URLs)
+  - https://www.google.com/search?q=golang+tutorial+best+practices
+  - https://www.google.com/search?q=effective+Go+documentation+examples
+  - https://www.google.com/search?q=REST+API+implementation+guide+structure
+  - https://www.google.com/search?q=database+migration+guide+examples
+  - https://www.google.com/search?q=microservice+implementation+tutorial+structure
 
 mapreduce:
   reduce_keys: ["word", "count"]

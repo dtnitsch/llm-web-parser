@@ -25,7 +25,7 @@ type Page struct {
 	Title   string         `json:"title"`
 
 	// Full mode
-	Content []Section `json:"content,omitempty"`
+	Content []Section `json:"content"`
 
 	// Cheap mode
 	FlatContent []ContentBlock `json:"flat_content,omitempty"`
@@ -122,7 +122,7 @@ func (p *Page) ComputeMetadata() {
 		return
 	}
 
-	blocks := p.allTextBlocks()
+	blocks := p.AllTextBlocks()
 
 	var textBuilder strings.Builder
 	for _, b := range blocks {
@@ -194,35 +194,8 @@ func (p *Page) countSectionsRecursive(sections []Section) int {
 	}
 	return count
 }
-/*
-func (p *Page) allTextBlocks() []ContentBlock {
-	var blocks []ContentBlock
 
-	// Cheap mode
-	if len(p.FlatContent) > 0 {
-		return p.FlatContent
-	}
-
-	// Full mode
-	var walkSections func(sections []Section)
-	walkSections = func(sections []Section) {
-		for _, s := range sections {
-			if s.Heading != nil {
-				blocks = append(blocks, *s.Heading)
-			}
-			blocks = append(blocks, s.Blocks...)
-			if len(s.Children) > 0 {
-				walkSections(s.Children)
-			}
-		}
-	}
-
-	walkSections(p.Content)
-	return blocks
-}
-*/
-
-func (p *Page) allTextBlocks() []ContentBlock {
+func (p *Page) AllTextBlocks() []ContentBlock {
 	var blocks []ContentBlock
 
 	// Cheap mode

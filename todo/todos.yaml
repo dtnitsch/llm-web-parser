@@ -1,0 +1,302 @@
+
+---
+project: llm-web-parser
+last_updated: 2026-01-07
+
+priorities:
+  - P0 (Critical - Next Release)
+  - P1 (High Value)
+  - P2 (Medium Value)
+  - P3 (Nice to Have)
+  - P4 (Research/Experimental)
+
+performance_benchmark:
+  # ... (benchmark data omitted for brevity) ...
+
+todos:
+  # ======================================================================
+  # P0 — CRITICAL (NEXT RELEASE)
+  # ======================================================================
+
+  - id: file_based_caching
+    priority: P0
+    status: todo
+    description: >
+      Implement a simple, deterministic, file-based cache with a TTL. This
+      is the foundational enabler for all multi-stage workflows and must be
+      completed before other features that rely on it.
+    details:
+      - Use a SHA256 hash of the URL as the cache key (filename).
+      - Store cache files in a dedicated directory (e.g., ~/.cache/llm-web-parser/).
+      - Before fetching, check if a cached file exists and if its modification
+        time is within the TTL.
+      - Add a `--cache-ttl` flag to configure the cache duration (e.g., "1h", "30m").
+    impact: >
+      Massive performance and usability win. Makes iterative exploration
+      fast and cheap. Unblocks the entire multi-stage analysis vision.
+
+  - id: extract_subcommand_filtered
+    priority: P0
+    status: in_progress
+    description: >
+      Add 'extract' subcommand to filter existing JSON files, enabling
+      powerful, LLM-driven deep-dives into content.
+    details:
+      - Implement a powerful `--extract-strategy` flag instead of multiple
+        separate filter flags (e.g., --strategy="type:paragraph|code,conf:>=0.7").
+      - Add Table of Contents (TOC) extraction during parsing to enable
+        section-based extraction (e.g., --strategy="section:'API Reference'").
+      - Add Chunk Boundary detection to allow for token-budgeted extraction
+        (e.g., --max-tokens=5000), splitting content at natural breaks.
+      - Extracted blocks must carry a "Structural Lineage" (source URL, block ID,
+        parent ID, heading ancestry) to enable precise follow-up queries.
+    impact: >
+      Completes the core `minimal -> summary -> extract` workflow. This command
+      is the surgical tool an LLM uses in the final stage of analysis.
+
+  - id: golangci_lint_fixes
+    priority: P0
+    status: in_progress
+    assigned_to: daniel
+    description: Fix all remaining golangci-lint issues to establish code quality baseline.
+
+  - id: documentation_structure
+    priority: P0
+    status: todo
+    description: >
+      Create professional documentation for contributors and for LLM consumption.
+
+  # ======================================================================
+  # P1 — FOUNDATIONAL ARCHITECTURE & WORKFLOW
+  # ======================================================================
+
+  - id: multi_stage_analysis_workflow
+    priority: P1
+    status: todo
+    description: >
+      Architect the tool around a multi-stage, deferred-computation workflow
+      that allows an LLM to intelligently request more detail on demand.
+    details:
+      - Create a `minimal` output mode that only saves HTML to cache and extracts
+        absolute minimum metadata (e.g., title, description).
+      - Create a new `analyze` command that reads from the cache and performs
+        expensive parsing and analysis on a user-specified subset of URLs.
+    impact: >
+      This is the platonic ideal of an LLM-centric workflow. It minimizes
+      wasted computation and allows the LLM to act as the "scheduler" for
+      expensive analysis.
+
+  - id: terse_output_format
+    priority: P1
+    status: todo
+    description: >
+      Define and implement a v2 `summary` output format that is aggressively
+      optimized for token efficiency, based on peer LLM feedback.
+    details:
+      - Adopt a schema with abbreviated keys (e.g., `u` for url, `et` for tokens).
+      - Use arrays for fixed-order distributions (e.g., `cd: [10, 20, 5]` for confidence).
+      - Add a `--summary-version` flag (`v1`, `v2`) to maintain backward compatibility.
+      - Document the terse schema in the README.
+    impact: >
+      Directly reduces API costs and unlocks the ability to analyze more
+      documents within the same context window.
+
+  - id: adaptive_caching
+    priority: P1
+    status: todo
+    description: >
+      Enhance the caching system with intelligent, adaptive TTLs based on content
+      type, with a user-override mechanism.
+    details:
+      - On first fetch, detect content type and publication date to assign a
+        default cache profile (e.g., Permanent, Stable, Volatile).
+      - Allow users to specify their own TTL patterns in the config file, which
+        will override the adaptive defaults.
+    impact: >
+      Improves the intelligence and efficiency of the cache.
+
+  # ======================================================================
+  # P2 — HIGH-VALUE SIGNALS & AUDITS
+  # ======================================================================
+
+  - id: audit_content_authority
+    priority: P2
+    status: todo
+    description: >
+      Add an `audit authority` subcommand to analyze a page for signals
+      of trustworthiness and reliability.
+    details:
+      - Extract author information and publication/last-updated dates.
+      - Detect and parse academic-style citations and references.
+    impact: Allows an LLM to evaluate the quality and reliability of its sources.
+
+  - id: generate_provenance_log
+    priority: P2
+    status: todo
+    description: >
+      For each URL processed, generate a deterministic log of the actions
+      and decisions made by the tool.
+    details:
+      - Log cache hits/misses, content type heuristics, and TTL assignments.
+      - Include this log in the summary output.
+    impact: >
+      Makes the tool's operations transparent and auditable, allowing an LLM
+      to "show its work" and answer questions about its data gathering process.
+
+  - id: cluster_results_by_host
+    priority: P2
+    status: todo
+    description: >
+      Add a top-level `clusters` object to the summary output that groups
+      results by hostname.
+    details:
+      - For each host, provide count, average tokens, common path prefixes, etc.
+    impact: >
+      Gives the LLM an immediate high-level understanding of the source
+      material's composition, enabling smarter, cluster-based analysis.
+
+  - id: detect_content_changes_and_duplicates
+    priority: P2
+    status: todo
+    description: >
+      Implement mechanisms for change detection and content de-duplication.
+    details:
+      - Use normalized content hashes to detect near-identical content
+        across different URLs (e.g., syndicated articles).
+    impact: >
+      Prevents the LLM from overweighting duplicated content and enables
+      foundational temporal reasoning.
+
+  - id: detect_boilerplate_fingerprints
+    priority: P2
+    status: todo
+    description: >
+      Implement per-domain boilerplate fingerprinting to identify and flag
+      repetitive content (headers, footers, nav bars).
+    impact: >
+      Reduces noise in summaries and allows the LLM to safely ignore
+      content that appears on 95% of pages from a domain.
+
+  - id: generate_coverage_maps
+    priority: P2
+    status: todo
+    description: >
+      Generate explicit "coverage and omission" maps for each page summary.
+    details:
+      - Report what percentage of page text was included vs. excluded.
+      - Note which major block types or sections were dropped.
+    impact: >
+      Directly reduces hallucinations by making it clear to the LLM what it
+      is *not* seeing.
+
+  # ======================================================================
+  # P3 — GRANULAR ANALYSIS & UX
+  # ======================================================================
+
+  - id: command_diff_readable
+    priority: P3
+    status: todo
+    description: >
+      Create a user-facing `diff` command that produces a human-readable
+      summary of changes between a cached and live version of a URL.
+    details:
+      - Builds on the `detect_content_changes_and_duplicates` task.
+      - Output should highlight added/removed sections and summary stats.
+    impact: >
+      Provides a powerful utility for users to track changes on a page, and
+      a clean output that an LLM can present directly to a user.
+
+  - id: analyze_code_and_navigation
+    priority: P3
+    status: todo
+    description: >
+      Extract and analyze code blocks and site navigation structures.
+    details:
+      - Distinguish inline code vs. code blocks and detect syntax hints.
+      - Extract and parse main navigation trees and breadcrumb trails.
+    impact: >
+      Enables code-specific queries and provides a structural map of the
+      website without fetching every page.
+
+  - id: audit_structural_shapes
+    priority: P3
+    status: todo
+    description: >
+      Extract deterministic "shape" metadata for tables and lists.
+    details:
+      - For tables: row count, column count, header presence.
+      - For lists: item count, ordered vs. unordered, nesting depth.
+    impact: Helps an LLM know where data-rich content probably is.
+
+  - id: flag_source_ambiguity
+    priority: P3
+    status: todo
+    description: >
+      Add deterministic checks for conflicting or ambiguous metadata.
+    details:
+      - Flag pages with multiple conflicting publication dates or authors.
+      - Flag when detected content language does not match the HTML `lang` attribute.
+    impact: >
+      Tells the LLM when to be cautious, directly addressing a root
+      cause of hallucinations.
+
+  # ======================================================================
+  # P4 — FUTURE EXPLORATION
+  # ======================================================================
+
+  - id: explore_session_api_model
+    priority: P4
+    status: todo
+    description: >
+      Explore implementing a session-based API model to make the tool an
+      interactive reasoning partner.
+    impact: >
+      Could change the paradigm from "LLM consumes text" to "LLM queries and
+      refines stable artifacts."
+
+  - id: dom_structure_fingerprinting
+    priority: P4
+    status: todo
+    description: >
+      Create a "fingerprint" of a page's DOM structure to deterministically
+      identify known site types (e.g., arXiv, Wikipedia).
+    impact: >
+      Provides very high confidence in the source's type.
+
+  - id: content_hash_change_detection
+    priority: P4
+    status: deprecated
+    description: >
+      (Superseded by detect_content_changes_and_duplicates)
+      Hash content blocks to enable change detection between re-crawls.
+    impact: >
+      Enables monitoring workflows (track competitor pricing changes,
+      docs updates, blog post edits).
+
+  # ======================================================================
+  # DONE
+  # ======================================================================
+  - id: cli_args_and_stdout_output
+    priority: P0
+    status: done
+    completed: 2026-01-07
+  - id: summary_output_mode
+    priority: P0
+    status: done
+    completed: 2026-01-07
+  - { id: file_size_caching, priority: P0, status: done, completed: 2025-12-30 }
+  # ... (older done tasks can be fully archived later)
+
+  # ======================================================================
+  # DEPRECATED
+  # ======================================================================
+  # Older tasks that have been absorbed into the new, more comprehensive roadmap.
+  - { id: html_to_text_ratio, status: deprecated, reason: "Superseded" }
+  - { id: block_type_distribution, status: deprecated, reason: "Superseded" }
+  - { id: link_density_metrics, status: deprecated, reason: "Superseded" }
+  - { id: url_structure_metadata, status: deprecated, reason: "Superseded" }
+  - { id: image_and_media_counts, status: deprecated, reason: "Superseded" }
+  - { id: publication_date_extraction, status: deprecated, reason: "Superseded" }
+  - { id: parse_citations, status: deprecated, reason: "Superseded" }
+  - { id: boilerplate_detection_signals, status: deprecated, reason: "Superseded" }
+  # ... (and so on for all other superseded tasks)

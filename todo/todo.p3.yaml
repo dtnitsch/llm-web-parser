@@ -1,0 +1,68 @@
+- id: command_diff_readable
+  priority: P3
+  status: todo
+  description: >
+    Create a user-facing `diff` command that produces a human-readable
+    summary of changes between a cached and live version of a URL.
+  details:
+    - Builds on the `detect_content_changes_and_duplicates` task.
+    - Output should highlight added/removed sections and summary stats.
+  impact: >
+    Provides a powerful utility for users to track changes on a page, and
+    a clean output that an LLM can present directly to a user.
+
+- id: analyze_code_and_navigation
+  priority: P3
+  status: todo
+  description: >
+    Extract and analyze code blocks and site navigation structures.
+  details:
+    - Distinguish inline code from code blocks and detect syntax hints.
+    - Extract and parse main navigation trees and breadcrumb trails.
+  impact: >
+    Enables code-specific queries and provides a structural map of the
+    entire website without fetching every page.
+
+- id: audit_structural_shapes
+  priority: P3
+  status: todo
+  description: >
+    Extract deterministic "shape" metadata for tables and lists.
+  details:
+    - For tables: row count, column count, header presence.
+    - For lists: item count, ordered vs. unordered, nesting depth.
+  impact: Helps an LLM know where data-rich content probably is.
+
+- id: flag_source_ambiguity
+  priority: P3
+  status: todo
+  description: >
+    Add deterministic checks for conflicting or ambiguous metadata.
+  details:
+    - Flag pages with multiple conflicting publication dates or authors.
+    - Flag when detected content language does not match the HTML `lang` attribute.
+  impact: >
+    Tells the LLM when to be cautious, directly addressing a root
+    cause of hallucinations.
+
+- id: explore_session_api_model
+  priority: P3
+  status: todo
+  description: >
+    Explore implementing a session-based API model to make the tool an
+    interactive reasoning partner.
+  impact: >
+    Could change the paradigm from "LLM consumes text" to "LLM queries and
+    refines stable artifacts."
+
+- id: generate_honesty_flags
+  priority: P3
+  status: todo
+  description: >
+    Generate lightweight, deterministic "honesty flags" for each URL processed.
+  details:
+    - Examples: `content_truncated`, `rendering_failed`, `paywall_detected`,
+      `script_heavy_page`, `extraction_confidence_low_overall`.
+  impact: >
+    Provides critical context to the LLM about the completeness and
+    reliability of the extracted content, directly mitigating hallucinations.
