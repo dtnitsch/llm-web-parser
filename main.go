@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -176,6 +178,19 @@ type SummaryDetails struct {
 	HTTPContentType string `yaml:"http_content_type,omitempty"`
 }
 
+// FailedURL represents a URL that failed during processing.
+type FailedURL struct {
+	URL          string `yaml:"url"`
+	StatusCode   int    `yaml:"status_code"` // 0 for network errors
+	ErrorType    string `yaml:"error_type"`  // http_error, network_error, parse_error, timeout
+	ErrorMessage string `yaml:"error_message"`
+}
+
+// FailedURLs wraps the list of failed URLs for YAML output.
+type FailedURLs struct {
+	FailedURLs []FailedURL `yaml:"failed_urls"`
+}
+
 // toTerseStatus converts status string to int (0=success, 1=failed).
 func toTerseStatus(status string) int {
 	if status == "success" {
@@ -302,6 +317,55 @@ func structToMap(obj interface{}) map[string]interface{} {
 	var result map[string]interface{}
 	_ = json.Unmarshal(data, &result)
 	return result
+}
+
+// validateURLs checks all URLs for proper format and returns a list of invalid URLs.
+// Returns empty slice if all URLs are valid.
+func validateURLs(urls []string) []string {
+	var invalidURLs []string
+
+	// Regex pattern for valid URLs
+	// Must start with http:// or https://
+	// Must have a valid domain (alphanumeric, dots, hyphens)
+	// Can have path, query, fragment
+	urlPattern := regexp.MustCompile(`^https?://[a-zA-Z0-9][-a-zA-Z0-9.]*[a-zA-Z0-9](/[^\s]*)?$`)
+
+	for _, rawURL := range urls {
+		trimmed := strings.TrimSpace(rawURL)
+
+		// Empty URLs are invalid
+		if trimmed == "" {
+			invalidURLs = append(invalidURLs, rawURL)
+			continue
+		}
+
+		// Check basic pattern
+		if !urlPattern.MatchString(trimmed) {
+			invalidURLs = append(invalidURLs, rawURL)
+			continue
+		}
+
+		// Use net/url to validate structure
+		parsed, err := url.Parse(trimmed)
+		if err != nil {
+			invalidURLs = append(invalidURLs, rawURL)
+			continue
+		}
+
+		// Ensure scheme is http or https
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			invalidURLs = append(invalidURLs, rawURL)
+			continue
+		}
+
+		// Ensure host is not empty
+		if parsed.Host == "" {
+			invalidURLs = append(invalidURLs, rawURL)
+			continue
+		}
+	}
+
+	return invalidURLs
 }
 
 func main() {
@@ -690,6 +754,16 @@ func fetchAction(c *cli.Context) error {
 		return fmt.Errorf("no URLs provided via --urls flag or config file")
 	}
 
+	// Validate all URLs before processing (fail fast)
+	invalidURLs := validateURLs(config.URLs)
+	if len(invalidURLs) > 0 {
+		fmt.Fprintf(os.Stderr, "Error: %d URL(s) are malformed:\n", len(invalidURLs))
+		for _, badURL := range invalidURLs {
+			fmt.Fprintf(os.Stderr, "  - %s\n", badURL)
+		}
+		os.Exit(1)
+	}
+
 	// Generate session ID from URLs
 	sessionID := session.GenerateSessionID(config.URLs)
 	outputDir := c.String("output-dir")
@@ -750,6 +824,12 @@ func fetchAction(c *cli.Context) error {
 			return fmt.Errorf("failed to write summary details: %w", err)
 		}
 
+		// Collect and write failed URLs if any
+		failedURLs := collectFailedURLs(allResults)
+		if err := writeFailedURLsToSession(failedURLs, sessionDir); err != nil {
+			logger.Warn("Failed to write failed URLs file", "error", err)
+		}
+
 		// Update sessions index
 		sessionInfo := session.Info{
 			SessionID:   sessionID,
@@ -765,8 +845,13 @@ func fetchAction(c *cli.Context) error {
 		}
 
 		// Print concise stats to stdout
-		fmt.Printf("Parsed %d URLs - %d success, %d failed. Summary files in %s. Features enabled: %s\n",
-			len(config.URLs), successCount, failedCount, sessionDir, c.String("features"))
+		if failedCount > 0 {
+			fmt.Printf("Parsed %d URLs - %d success, %d failed (see %s/failed-urls.yaml). Summary files in %s. Features enabled: %s\n",
+				len(config.URLs), successCount, failedCount, sessionDir, sessionDir, c.String("features"))
+		} else {
+			fmt.Printf("Parsed %d URLs - %d success, %d failed. Summary files in %s. Features enabled: %s\n",
+				len(config.URLs), successCount, failedCount, sessionDir, c.String("features"))
+		}
 
 		return nil
 	case "summary":
@@ -1226,5 +1311,71 @@ func computeBlockTypeDist(page *models.Page) map[string]int {
 		dist[block.Type]++
 	}
 	return dist
+}
+
+// collectFailedURLs extracts failed URLs from results and creates FailedURL objects.
+func collectFailedURLs(results []Result) []FailedURL {
+	var failed []FailedURL
+
+	for _, r := range results {
+		if r.Error != nil {
+			failedURL := FailedURL{
+				URL:          r.URL,
+				StatusCode:   0, // Default to 0 for network errors
+				ErrorType:    r.ErrorType,
+				ErrorMessage: r.Error.Error(),
+			}
+
+			// Try to get status code if available from page metadata
+			if r.Page != nil && r.Page.Metadata.StatusCode > 0 {
+				failedURL.StatusCode = r.Page.Metadata.StatusCode
+			}
+
+			// Classify error type if not set
+			if failedURL.ErrorType == "" {
+				errMsg := strings.ToLower(r.Error.Error())
+				switch {
+				case strings.Contains(errMsg, "timeout"):
+					failedURL.ErrorType = "timeout"
+				case strings.Contains(errMsg, "parse") || strings.Contains(errMsg, "unmarshal"):
+					failedURL.ErrorType = "parse_error"
+				case strings.Contains(errMsg, "connection") || strings.Contains(errMsg, "network"):
+					failedURL.ErrorType = "network_error"
+				case failedURL.StatusCode >= 400:
+					failedURL.ErrorType = "http_error"
+				default:
+					failedURL.ErrorType = "unknown_error"
+				}
+			}
+
+			failed = append(failed, failedURL)
+		}
+	}
+
+	return failed
+}
+
+// writeFailedURLsToSession writes failed URLs to failed-urls.yaml in the session directory.
+func writeFailedURLsToSession(failed []FailedURL, sessionDir string) error {
+	if len(failed) == 0 {
+		return nil // No failures, skip writing file
+	}
+
+	failedURLs := FailedURLs{
+		FailedURLs: failed,
+	}
+
+	outputPath := filepath.Join(sessionDir, "failed-urls.yaml")
+
+	yamlBytes, err := yaml.Marshal(&failedURLs)
+	if err != nil {
+		return fmt.Errorf("failed to marshal failed URLs to YAML: %w", err)
+	}
+
+	if err := os.WriteFile(outputPath, yamlBytes, 0600); err != nil {
+		return fmt.Errorf("failed to write failed URLs file: %w", err)
+	}
+
+	return nil
 }
 
