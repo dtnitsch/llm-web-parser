@@ -1,8 +1,0 @@
-- id: dom_structure_fingerprinting
-  priority: P4
-  status: todo
-  description: >
-    Create a "fingerprint" of a page's DOM structure to deterministically
-    identify known site types (e.g., arXiv, Wikipedia).
-  impact: >
-    Provides very high confidence in the source's type.

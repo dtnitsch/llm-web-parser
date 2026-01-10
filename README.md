@@ -1,6 +1,6 @@
 # LLM Web Parser
 
-**Fast, parallel web scraper that returns structured JSON optimized for LLM consumption**
+**Fast, parallel web scraper that returns structured data (YAML/JSON) optimized for LLM consumption**
 
 Parse 40 URLs in 4 seconds. Get hierarchical sections, confidence scores, and keyword extraction—not raw HTML bloat.
 
@@ -37,17 +37,17 @@ git clone https://github.com/dtnitsch/llm-web-parser.git
 cd llm-web-parser
 go build .
 
-# 2. Fetch and parse URLs
-./llm-web-parser fetch --urls "https://docs.python.org/3/library/asyncio.html,https://fastapi.tiangolo.com" --quiet
+# 2. Fetch and parse URLs (outputs tier2 YAML by default)
+./llm-web-parser fetch --urls "https://docs.python.org/3/library/asyncio.html,https://fastapi.tiangolo.com"
 
 # 3. Check results
 ls llm-web-parser-results/parsed/
 # docs_python_org-3-library-asyncio_html-abc123.json
 # fastapi_tiangolo_com-def456.json
-# summary-2026-01-10.json (← start here!)
+# summary-details-2026-01-10.yaml (← detailed metadata for all URLs)
 ```
 
-**Pro tip:** Read `summary-*.json` first (3-5k tokens) to see what's available, then deep-dive into specific files.
+**Pro tip:** The tier2 YAML index (stdout) shows scannable metadata. The `summary-details-*.yaml` file has full metadata for all URLs including enriched detection.
 
 ---
 
@@ -85,11 +85,87 @@ jq -s 'map({url, tokens: .metadata.estimated_tokens, quality: .metadata.extracti
 ./llm-web-parser extract --from 'llm-web-parser-results/parsed/*.json' --strategy="conf:>=0.8,type:p"
 ```
 
+### Default Output: Tier2 YAML with Smart Detection
+
+Two-tier summary system with automatic domain/academic detection - perfect for research!
+
+```bash
+# Default: Tier2 YAML output - index (stdout) + details (file)
+./llm-web-parser fetch --urls "https://cdc.gov,https://arxiv.org,https://github.com,https://docs.python.org"
+
+# Output: Summary index (YAML to stdout) with smart categorization
+# - url, category, confidence (0-10), title, description, tokens
+# - Only successful fetches
+# - ~150 bytes/URL (vs 400+ bytes in regular summary)
+#
+# File created: llm-web-parser-results/summary-details-YYYY-MM-DD.yaml
+# - All URLs (including failures)
+# - Full enriched metadata
+# - ~400 bytes/URL
+
+# Filter by confidence >= 7.0 (high-quality sources)
+./llm-web-parser fetch --urls "..." | yq '.[] | select(.conf >= 7.0)'
+
+# Filter by category (find all government/health sites)
+./llm-web-parser fetch --urls "..." | yq '.[] | select(.cat == "gov/health")'
+
+# Find large documents (>500 tokens)
+./llm-web-parser fetch --urls "..." | yq '.[] | select(.tokens > 500) | .url'
+
+# View detailed metadata for specific URL
+yq '.[] | select(.url == "https://arxiv.org")' llm-web-parser-results/summary-details-YYYY-MM-DD.yaml
+```
+
+**Smart Detection (zero API cost!):**
+- Domain type: `gov`, `edu`, `academic`, `commercial`, `mobile`
+- Categories: `gov/health`, `academic/ai`, `news/tech`, `docs/api`, `blog`
+- Academic signals: DOI, ArXiv IDs, LaTeX, citations
+- Country detection from TLD
+- Author, published date, site name extraction
+
+**Scaling:** 100 URLs = ~15KB index + ~40KB details (vs ~470KB full parse)
+
+### Multi-Stage Workflow: Fetch Minimal → Analyze Selected
+
+**NEW (v1.0):** Default mode is now **minimal** (metadata only, no content parsing) for 2-3x faster fetching!
+
+```bash
+# Step 1: Fetch 100 URLs in minimal mode (DEFAULT - very fast, outputs tier2 YAML)
+./llm-web-parser fetch --urls "url1,url2,...,url100" > index.yaml
+# Output: Minimal index with domain types, categories, confidence scores
+# Speed: ~2-3 seconds for 100 URLs
+
+# Step 2: Scan index, filter by criteria
+yq '.[] | select(.conf >= 7.0 and .cat == "academic/ai")' index.yaml
+# LLM decides: "URLs 5, 12, and 47 look interesting"
+
+# Step 3: Deep-dive analysis on selected URLs from cache
+./llm-web-parser analyze --urls "url5,url12,url47" --features full-parse
+# Output: Full hierarchical parsing for only the 3 selected URLs
+# Speed: ~0.5 seconds
+
+# Total: 3.5s vs 15s to parse all 100 URLs upfront!
+```
+
+**When to use full-parse upfront:**
+```bash
+# For small batches (<20 URLs) or when you know you need all content
+./llm-web-parser fetch --urls "..." --features full-parse
+```
+
+**Performance comparison (100 URLs):**
+- Minimal mode: 2-3s total (fetch all)
+- Selective analysis: +0.5s (analyze 5 URLs)
+- **Total: 3.5s vs 15s full-parse**
+
 ### Fetch Command Options
 
 ```bash
-# Quiet mode (suppress logs)
-./llm-web-parser fetch --urls "https://example.com" --quiet
+# Default: quiet mode + tier2 YAML output
+./llm-web-parser fetch --urls "https://example.com"
+
+# Verbose logging (show all info/debug messages)
+./llm-web-parser fetch --urls "https://example.com" --quiet=false
 
 # Force refetch (ignore cache)
 ./llm-web-parser fetch --urls "https://example.com" --force-fetch
@@ -97,8 +173,11 @@ jq -s 'map({url, tokens: .metadata.estimated_tokens, quality: .metadata.extracti
 # Adjust cache age
 ./llm-web-parser fetch --urls "https://example.com" --max-age "24h"
 
-# Summary output (default, most token-efficient)
+# Use legacy summary mode (JSON to stdout)
 ./llm-web-parser fetch --urls "https://example.com" --output-mode summary
+
+# Use JSON format instead of YAML
+./llm-web-parser fetch --urls "https://example.com" --format json
 ```
 
 ---
