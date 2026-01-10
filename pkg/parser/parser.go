@@ -8,6 +8,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/dtnitsch/llm-web-parser/models"
+	"github.com/dtnitsch/llm-web-parser/pkg/detector"
 	"github.com/go-shiori/go-readability"
 )
 
@@ -30,6 +31,13 @@ func (p *Parser) Parse(req models.ParseRequest) (*models.Page, error) {
 	var page *models.Page
 
 	switch mode {
+	case models.ParseModeMinimal:
+		page, err = p.parseMinimal(req.URL, article, parsedURL)
+		if err != nil {
+			return nil, err
+		}
+		// No auto-escalation for minimal mode - user must explicitly use --features
+
 	case models.ParseModeCheap:
 		page, err = p.parseCheap(req.URL, article, parsedURL)
 		if err != nil {
@@ -51,6 +59,27 @@ func (p *Parser) Parse(req models.ParseRequest) (*models.Page, error) {
 
 		page.ComputeMetadata()
 	}
+
+	return page, nil
+}
+
+func (p *Parser) parseMinimal(rawURL string, article readability.Article, parsedURL *url.URL) (*models.Page, error) {
+	// Minimal mode: ONLY extract metadata from go-readability, no content parsing
+	page := &models.Page{
+		URL:   rawURL,
+		Title: normalizeText(article.Title),
+		// No Content or FlatContent - empty!
+	}
+
+	page.Metadata.ExtractionMode = "minimal"
+	page.Metadata.ExtractionQuality = "minimal" // New quality level
+
+	// Enrich with free metadata (readability + smart detection)
+	enrichMetadata(page, article, rawURL)
+
+	// Don't compute full metadata - we have no content blocks
+	// Just mark as computed so downstream doesn't try
+	page.Metadata.Computed = true
 
 	return page, nil
 }
@@ -176,6 +205,9 @@ func (p *Parser) parseFull(
 	page.Metadata.ExtractionMode = "full"
 	page.Metadata.ExtractionQuality = "ok"
 
+	// Enrich metadata from article and detector
+	enrichMetadata(page, article, rawURL)
+
 	return page, nil
 }
 
@@ -227,6 +259,9 @@ func (p *Parser) parseCheap(rawURL string, article readability.Article, parsedUr
 
 	page.Metadata.ExtractionMode = "cheap"
 	page.Metadata.ExtractionQuality = quality
+
+	// Enrich metadata from article and detector
+	enrichMetadata(page, article, rawURL)
 
 	return page, nil
 }
@@ -360,5 +395,38 @@ func resolveParseMode(req models.ParseRequest) models.ParseMode {
 
 	// Default
 	return models.ParseModeCheap
+}
+
+// enrichMetadata populates page metadata from readability article and detector analysis
+func enrichMetadata(page *models.Page, article readability.Article, rawURL string) {
+	// Populate readability metadata
+	page.Metadata.Author = article.Byline
+	page.Metadata.Excerpt = article.Excerpt
+	page.Metadata.SiteName = article.SiteName
+	if article.PublishedTime != nil {
+		page.Metadata.PublishedTime = article.PublishedTime.Format("2006-01-02")
+	}
+	page.Metadata.Favicon = article.Favicon
+	page.Metadata.Image = article.Image
+
+	// Get content for detector analysis (use article.Content for academic detection)
+	// This is more reliable than page.ToPlainText() which may be empty in cheap mode
+	enriched := detector.Analyze(rawURL, article, article.Content, nil)
+
+	// Populate detector metadata
+	page.Metadata.DomainType = enriched.DomainType
+	page.Metadata.DomainCategory = enriched.DomainCategory
+	page.Metadata.Country = enriched.Country
+	page.Metadata.Confidence = enriched.Confidence
+
+	page.Metadata.HasDOI = enriched.HasDOI
+	page.Metadata.DOIPattern = enriched.DOIPattern
+	page.Metadata.HasArXiv = enriched.HasArXiv
+	page.Metadata.ArXivID = enriched.ArXivID
+	page.Metadata.HasLaTeX = enriched.HasLaTeX
+	page.Metadata.HasCitations = enriched.HasCitations
+	page.Metadata.HasReferences = enriched.HasReferences
+	page.Metadata.HasAbstract = enriched.HasAbstract
+	page.Metadata.AcademicScore = enriched.AcademicScore
 }
 

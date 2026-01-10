@@ -58,6 +58,119 @@ The `fetch` command supports two summary output formats controlled by `--summary
 
 ---
 
+## Tier2 Output Format (Two-Tier Summary)
+
+The tier2 output mode (`--output-mode tier2`) provides two complementary summaries optimized for handling 100-1000 URLs:
+
+### Summary Index (stdout, YAML)
+
+**Only includes successful fetches** - Ultra-minimal format (~150 bytes/URL):
+
+```yaml
+- url: https://arxiv.org/abs/2103.00020
+  cat: academic/general              # Domain category
+  conf: 8.95                         # Confidence score (0-10)
+  title: Learning Transferable Visual Models...
+  desc: State-of-the-art computer vision systems...  # Excerpt/description
+  tokens: 842                        # Estimated tokens
+
+- url: https://www.cdc.gov
+  cat: gov/health
+  conf: 7.0
+  title: Centers for Disease Control and Prevention
+  desc: About CDC
+  tokens: 14
+```
+
+**Fields:**
+- `url` - Original URL
+- `cat` - Domain category (see categories below)
+- `conf` - Confidence score 0-10 (based on metadata signals)
+- `title` - Page title
+- `desc` - Excerpt/meta description
+- `tokens` - Estimated token count (word_count / 2.5)
+
+### Summary Details (file: `summary-details-YYYY-MM-DD.yaml`)
+
+**Includes all URLs** (successful and failed) - Full enriched metadata (~400 bytes/URL):
+
+```yaml
+- url: https://arxiv.org/abs/2103.00020
+  file_path: llm-web-parser-results/parsed/arxiv_org_abs_2103_00020-3d7d444bcdb3.json
+  status: success
+
+  # Basic metadata
+  title: Learning Transferable Visual Models...
+  excerpt: State-of-the-art computer vision systems...
+  site_name: arXiv.org
+  author: '[Submitted on 26 Feb 2021]'
+  published_at: '2021-02-26'
+
+  # Smart detection
+  domain_type: academic              # gov, edu, academic, commercial, mobile
+  domain_category: academic/general  # See categories below
+  country: unknown                   # TLD-based: us, uk, de, jp, etc.
+  confidence: 8.95                   # 0-10 scale
+
+  # Academic signals (if detected)
+  academic_score: 3.5                # 0-10 composite score
+  has_doi: true
+  doi: 10.1234/example
+  has_arxiv: true
+  arxiv_id: 2103.00020
+
+  # Content metrics
+  word_count: 2105
+  estimated_tokens: 842
+  read_time_min: 9.4
+  language: en
+  content_type: article              # article, documentation, landing, blog, forum
+
+  # HTTP metadata (if available)
+  status_code: 200
+  final_url: https://arxiv.org/abs/2103.00020  # After redirects
+  redirect_chain: []
+  http_content_type: text/html
+```
+
+### Domain Categories
+
+Categories are detected automatically from URL patterns and content:
+
+- **Government**: `gov/general`, `gov/health`
+- **Academic**: `academic/general`, `academic/ai`
+- **Documentation**: `docs/api`
+- **News**: `news/tech`
+- **Other**: `blog`, `general`
+
+### Confidence Scoring (0-10 scale)
+
+Confidence is calculated based on metadata signal strength:
+
+**Base score: 5.0**
+
+**Boosts:**
+- Strong domain (gov, edu): +2.0
+- Academic domain: +3.0
+- Mobile site: +1.0
+- Academic signals (DOI, ArXiv): +0-3.0 (scaled)
+- Metadata present (author, published date, site name): +0.3-0.5 each
+
+**Cap: 10.0**
+
+### Academic Scoring (0-10 scale)
+
+Composite score based on detected academic signals:
+
+- DOI pattern: +3.0
+- ArXiv ID: +3.0
+- LaTeX markers: +1.5
+- Citations (et al., [1]): +1.0
+- References section: +1.0
+- Abstract section: +0.5
+
+---
+
 ## Page Schema
 
 ```jsonc

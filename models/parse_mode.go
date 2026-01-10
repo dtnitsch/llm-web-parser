@@ -3,13 +3,14 @@ package models
 type ParseMode int
 
 const (
-	ParseModeCheap ParseMode = iota
-	ParseModeFull
+	ParseModeMinimal ParseMode = iota // NEW DEFAULT: metadata only, no content parsing
+	ParseModeCheap                    // Basic flat parsing
+	ParseModeFull                     // Full hierarchical parsing
 )
 
 func ResolveParseMode(req ParseRequest) (ParseMode) {
 	if req.Mode == 0 {
-		return ParseModeCheap
+		return ParseModeMinimal // NEW: Default to minimal
 	}
 
 	// Escalate automatically if needed
@@ -17,6 +18,6 @@ func ResolveParseMode(req ParseRequest) (ParseMode) {
 		return ParseModeFull
 	}
 
-	return ParseModeFull
+	return req.Mode
 }
 
