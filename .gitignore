@@ -1,6 +1,54 @@
-results/*
-llm-web-parser-results/*
-
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 llm-web-parser
 
+# Test binary, built with `go test -c`
+*.test
 
+# Output of the go coverage tool
+*.out
+*.prof
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Results and output directories
+results/
+llm-web-parser-results/
+
+# Backup and temporary files
+*.bak
+*.tmp
+*.swp
+*.swo
+*~
+config.bak.yaml
+
+# Research and planning (local workflow files)
+research/
+todo/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+.project
+.settings/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Log files
+*.log
+
+# Runtime generated files
+index.yaml
