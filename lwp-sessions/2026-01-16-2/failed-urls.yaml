@@ -1,0 +1,5 @@
+failed_urls:
+    - url: https://en.wikipedia.org/wiki/Go_(programming_language
+      status_code: 0
+      error_type: fetch_error
+      error_message: 'failed to fetch HTML, status code: 403'

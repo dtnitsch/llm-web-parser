@@ -87,6 +87,35 @@ type ContentBlock struct {
 func (p *Page) ToPlainText() string {
 	var sb strings.Builder
 
+	// Try FlatContent first (used in cheap/minimal parse modes)
+	if len(p.FlatContent) > 0 {
+		for _, block := range p.FlatContent {
+			// Handle different block types
+			switch block.Type {
+			case "table":
+				if block.Table != nil {
+					for _, row := range block.Table.Rows {
+						sb.WriteString(strings.Join(row, " "))
+						sb.WriteString("\n")
+					}
+				}
+			case "code":
+				if block.Code != nil {
+					sb.WriteString(block.Code.Content)
+					sb.WriteString("\n")
+				}
+			default:
+				// Regular text blocks (p, li, h1, h2, etc.)
+				if block.Text != "" {
+					sb.WriteString(block.Text)
+					sb.WriteString("\n")
+				}
+			}
+		}
+		return sb.String()
+	}
+
+	// Fall back to hierarchical Content (full parse mode)
 	for _, section := range p.Content {
 		flattenSection(&sb, section)
 	}
@@ -145,7 +174,7 @@ func (p *Page) ComputeMetadata() {
 
 	p.Metadata.SectionCount = p.countSectionsRecursive(p.Content)
 	p.Metadata.Language, p.Metadata.LanguageConfidence = p.detectLanguage(text)
-	p.Metadata.ContentType = detectContentType(p)
+	// ContentType is now set by parser via detector.DetectContentType() - don't overwrite it here
 
 	p.Metadata.Computed = true
 }

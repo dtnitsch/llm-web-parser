@@ -2,8 +2,6 @@
 package session
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,7 +14,7 @@ import (
 
 // Info represents metadata about a fetch session.
 type Info struct {
-	SessionID   string    `yaml:"session_id"`
+	SessionID   int64     `yaml:"session_id"`
 	Created     time.Time `yaml:"created"`
 	URLCount    int       `yaml:"url_count"`
 	Success     int       `yaml:"success"`
@@ -30,80 +28,26 @@ type Index struct {
 	Sessions []Info `yaml:"sessions"`
 }
 
-// GenerateSessionID creates a timestamp-first session ID from a list of URLs.
-// Format: YYYY-MM-DDTHH-MM-{hash}
-// Hash is derived from the sorted, normalized URL list.
-func GenerateSessionID(urls []string) string {
-	// Sort and normalize URLs for consistent hashing
-	normalized := make([]string, len(urls))
-	copy(normalized, urls)
-	sort.Strings(normalized)
-
-	// Create hash from sorted URLs
-	h := sha256.New()
-	for _, url := range normalized {
-		h.Write([]byte(url))
-		h.Write([]byte("\n"))
-	}
-	hashBytes := h.Sum(nil)
-	shortHash := hex.EncodeToString(hashBytes[:6]) // 12 char hex
-
-	// Generate timestamp (minute precision)
-	timestamp := time.Now().Format("2006-01-02T15-04")
-
-	return fmt.Sprintf("%s-%s", timestamp, shortHash)
-}
-
 // GetSessionDir returns the full path to a session directory.
-func GetSessionDir(baseDir, sessionID string) string {
-	return filepath.Join(baseDir, "sessions", sessionID)
+// Directory format: lwp-sessions/YYYY-MM-DD-{id}
+func GetSessionDir(sessionID int64, timestamp time.Time) string {
+	dateStr := timestamp.Format("2006-01-02")
+	dirName := fmt.Sprintf("%s-%d", dateStr, sessionID)
+	return filepath.Join("lwp-sessions", dirName)
 }
 
-// GetSessionsIndexPath returns the path to the sessions index file (at results root).
-func GetSessionsIndexPath(baseDir string) string {
-	return filepath.Join(baseDir, "index.yaml")
-}
-
-// Exists checks if a session directory exists and has summary files.
-func Exists(baseDir, sessionID string) bool {
-	sessionDir := GetSessionDir(baseDir, sessionID)
-	indexPath := filepath.Join(sessionDir, "summary-index.yaml")
-	detailsPath := filepath.Join(sessionDir, "summary-details.yaml")
-
-	// Check if both summary files exist
-	_, err1 := os.Stat(indexPath)
-	_, err2 := os.Stat(detailsPath)
-
-	return err1 == nil && err2 == nil
-}
-
-// IsSessionFresh checks if a session is fresh based on max age.
-// Returns true if the session's summary files are newer than maxAge.
-func IsSessionFresh(baseDir, sessionID string, maxAge time.Duration) bool {
-	if maxAge <= 0 {
-		// No expiry - always fresh if it exists
-		return Exists(baseDir, sessionID)
-	}
-
-	sessionDir := GetSessionDir(baseDir, sessionID)
-	detailsPath := filepath.Join(sessionDir, "summary-details.yaml")
-
-	info, err := os.Stat(detailsPath)
-	if err != nil {
-		return false
-	}
-
-	age := time.Since(info.ModTime())
-	return age <= maxAge
+// GetSessionsIndexPath returns the path to the sessions index file.
+// Located at lwp-sessions/index.yaml
+func GetSessionsIndexPath() string {
+	return filepath.Join("lwp-sessions", "index.yaml")
 }
 
 // EnsureSessionDir creates the session directory structure if it doesn't exist.
-func EnsureSessionDir(baseDir, sessionID string) error {
-	sessionDir := GetSessionDir(baseDir, sessionID)
-	sessionsRoot := filepath.Join(baseDir, "sessions")
+func EnsureSessionDir(sessionID int64, timestamp time.Time) error {
+	sessionDir := GetSessionDir(sessionID, timestamp)
 
-	// Create sessions/ root
-	if err := os.MkdirAll(sessionsRoot, 0750); err != nil {
+	// Create lwp-sessions root
+	if err := os.MkdirAll("lwp-sessions", 0750); err != nil {
 		return fmt.Errorf("failed to create sessions directory: %w", err)
 	}
 
@@ -115,9 +59,9 @@ func EnsureSessionDir(baseDir, sessionID string) error {
 	return nil
 }
 
-// UpdateSessionIndex adds or updates a session entry in sessions/index.yaml.
-func UpdateSessionIndex(baseDir string, info Info) error {
-	indexPath := GetSessionsIndexPath(baseDir)
+// UpdateSessionIndex adds or updates a session entry in lwp-sessions/index.yaml.
+func UpdateSessionIndex(info Info) error {
+	indexPath := GetSessionsIndexPath()
 
 	// Read existing index
 	var index Index
@@ -285,8 +229,9 @@ query_examples:
 usage:
   summary_index: Minimal scannable data per session
   summary_details: Full enriched metadata per session
-  location: llm-web-parser-results/sessions/{session-id}/
-  session_index: llm-web-parser-results/index.yaml (list all sessions)
+  location: lwp-sessions/{date}-{session-id}/
+  session_index: lwp-sessions/index.yaml (list all sessions)
+  url_artifacts: lwp-results/{url_id}/ (raw.html, generic.yaml, etc.)
 `
 
 	if err := os.WriteFile(fieldsPath, []byte(content), 0600); err != nil {

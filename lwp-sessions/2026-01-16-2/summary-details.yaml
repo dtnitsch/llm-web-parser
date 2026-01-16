@@ -1,0 +1,24 @@
+- url: https://en.wikipedia.org/wiki/Go_(programming_language
+  url_id: 2
+  status: failed
+  error: 'failed to fetch HTML, status code: 403'
+- url: https://go.dev/blog/intro-generics
+  url_id: 3
+  status: success
+  title: An Introduction To Generics - The Go Programming Language
+  excerpt: An introduction to generics in Go.
+  author: Robert Griesemer and Ian Lance Taylor 22 March 2022
+  domain_type: commercial
+  domain_category: blog
+  country: unknown
+  confidence: 5.5
+  word_count: 2692
+  estimated_tokens: 1077
+  read_time_min: 12
+  language: en
+  language_confidence: 0.95
+  content_type: docs
+  extraction_mode: cheap
+  block_count: 83
+  has_favicon: true
+  image_count: 1

@@ -2,9 +2,10 @@ package models
 
 // PageMetadata contains computed metadata about a page.
 type PageMetadata struct{
-	// Classification
-	ContentType string `json:"content_type"` // article, documentation, blog, landing, forum, unknown
-	Language    string `json:"language"`     // ISO-639-1 if possible (e.g. "en")
+	// Classification (enhanced content type detection)
+	ContentType    string  `json:"content_type"`              // academic, docs, wiki, news, repo, blog, landing, unknown
+	ContentSubtype string  `json:"content_subtype,omitempty"` // arxiv-paper, api-docs, reference, etc.
+	Language       string  `json:"language"`                  // ISO-639-1 if possible (e.g. "en")
 	LanguageConfidence float64 `json:"language_confidence,omitempty"`
 
 	// Size & cost signals
@@ -14,6 +15,13 @@ type PageMetadata struct{
 	// Structural signals
 	SectionCount int `json:"section_count"`
 	BlockCount   int `json:"block_count"`
+
+	// Content features (for specialized extraction)
+	HasInfobox      bool `json:"has_infobox,omitempty"`
+	HasTOC          bool `json:"has_toc,omitempty"`
+	HasCodeExamples bool `json:"has_code_examples,omitempty"`
+	CitationCount   int  `json:"citation_count,omitempty"`
+	CodeBlockCount  int  `json:"code_block_count,omitempty"`
 
 	Computed bool `json:"computed"`
 

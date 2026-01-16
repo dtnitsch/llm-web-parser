@@ -1,0 +1,89 @@
+# Summary Fields Reference (LLM-Optimized)
+# Auto-generated field documentation for llm-web-parser output
+
+fields:
+  # Status & Basic Info
+  url: string
+  status: [success, failed]
+  status_code: int (HTTP status)
+  error: string (only if failed)
+
+  # Basic Metadata
+  title: string
+  excerpt: string (description/summary)
+  site_name: string
+  author: string
+  published_at: string (ISO-8601 date)
+
+  # Domain Classification
+  domain_type: [gov, edu, academic, commercial, mobile, unknown]
+  domain_category: [gov/health, academic/ai, academic/general, news/tech, docs/api, blog, general]
+  country: string (2-letter code or "unknown")
+  confidence: float (0-10 quality/credibility score)
+
+  # Academic Signals (boolean, only present if true)
+  has_doi: bool
+  has_arxiv: bool
+  has_latex: bool
+  has_citations: bool
+  has_references: bool
+  has_abstract: bool
+  academic_score: float (0-10 composite academic signal strength)
+  doi: string (DOI pattern if found)
+  arxiv_id: string (ArXiv ID if found)
+
+  # Content Metrics
+  word_count: int
+  estimated_tokens: int (word_count / 2.5)
+  read_time_min: float
+  section_count: int (number of sections/headings)
+  block_count: int (number of content blocks)
+
+  # Language Detection
+  language: string (ISO-639-1 code: en, es, fr, de, etc)
+  language_confidence: float (0-1)
+
+  # Content Type
+  content_type: [landing, article, documentation, unknown]
+  extraction_mode: [minimal, cheap, full]
+
+  # Visual Metadata
+  has_favicon: bool (site has favicon)
+  image_count: int (number of images detected)
+
+  # HTTP Metadata
+  final_url: string (after redirects)
+  redirect_chain: [string] (list of redirect URLs)
+  http_content_type: string (Content-Type header)
+
+query_examples:
+  - desc: Government health sites with high confidence
+    yq: '.[] | select(.domain_category == "gov/health" and .confidence >= 7)'
+
+  - desc: Academic papers with citations
+    yq: '.[] | select(.has_citations and .academic_score >= 7)'
+
+  - desc: Visual-heavy content (landing pages, galleries)
+    yq: '.[] | select(.image_count > 10)'
+
+  - desc: Technical documentation (low images, high structure)
+    yq: '.[] | select(.image_count < 3 and .section_count > 5 and .domain_category == "docs/api")'
+
+  - desc: Long-form content worth deep reading
+    yq: '.[] | select(.word_count > 1000 and .read_time_min > 5 and .confidence >= 6)'
+
+  - desc: Non-English content
+    yq: '.[] | select(.language != "en" and .language_confidence > 0.8)'
+
+  - desc: Failed fetches only
+    yq: '.[] | select(.status == "failed")'
+
+  - desc: Academic AI/ML papers
+    yq: '.[] | select(.domain_category == "academic/ai" and .has_abstract)'
+
+usage:
+  summary_index: Minimal scannable data per session
+  summary_details: Full enriched metadata per session
+  location: lwp-sessions/{date}-{session-id}/
+  session_index: lwp-sessions/index.yaml (list all sessions)
+  url_artifacts: lwp-results/{url_id}/ (raw.html, generic.yaml, etc.)

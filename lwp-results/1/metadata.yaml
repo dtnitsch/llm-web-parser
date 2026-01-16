@@ -1,0 +1,13 @@
+url_id: 1
+url: https://go.dev/doc/effective_go
+domain: go.dev
+content_type: docs
+content_subtype: general-docs
+detection_confidence: 5.45
+has_abstract: true
+has_infobox: false
+has_toc: false
+has_code_examples: true
+section_count: 0
+citation_count: 0
+code_block_count: 739

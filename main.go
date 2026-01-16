@@ -2,371 +2,20 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"math"
-	"net/url"
 	"os"
-	"path/filepath"
-	"regexp"
-	"strings"
-	"sync"
-	"time"
 
-	"github.com/dtnitsch/llm-web-parser/models"
-	"github.com/dtnitsch/llm-web-parser/pkg/analytics"
+	"github.com/dtnitsch/llm-web-parser/internal/analyze"
+	corpusactions "github.com/dtnitsch/llm-web-parser/internal/corpus"
+	"github.com/dtnitsch/llm-web-parser/internal/db"
+	"github.com/dtnitsch/llm-web-parser/internal/fetch"
 	"github.com/dtnitsch/llm-web-parser/pkg/artifact_manager"
-	"github.com/dtnitsch/llm-web-parser/pkg/extractor"
-	"github.com/dtnitsch/llm-web-parser/pkg/fetcher"
-	"github.com/dtnitsch/llm-web-parser/pkg/mapreduce"
-	"github.com/dtnitsch/llm-web-parser/pkg/parser"
-	"github.com/dtnitsch/llm-web-parser/pkg/session"
+	dbpkg "github.com/dtnitsch/llm-web-parser/pkg/db"
+	"github.com/dtnitsch/llm-web-parser/pkg/help"
 
 	"github.com/urfave/cli/v2"
-	"gopkg.in/yaml.v3"
 )
-
-// Job defines a task for a worker to perform.
-type Job struct {
-	URL       string
-	ParseMode models.ParseMode
-}
-
-// Result holds the outcome of a processed job.
-type Result struct {
-	URL           string
-	FilePath      string
-	Page          *models.Page
-	Error         error
-	ErrorType     string
-	WordCounts    map[string]int
-	FileSizeBytes int64
-}
-
-// ResultOutput is the structured output for a single URL.
-type ResultOutput struct {
-	URL       string `json:"url"`
-	FilePath  string `json:"file_path,omitempty"`
-	Status    string `json:"status"`
-	Error     string `json:"error,omitempty"`
-	ErrorType string `json:"error_type,omitempty"`
-}
-
-// ResultSummary holds detailed summary data for a single processed URL.
-type ResultSummary struct {
-	URL                 string            `json:"url"`
-	FilePath            string            `json:"file_path,omitempty"`
-	Status              string            `json:"status"`
-	Error               string            `json:"error,omitempty"`
-	FileSizeBytes       int64             `json:"file_size_bytes,omitempty"`
-	EstimatedTokens     int               `json:"estimated_tokens,omitempty"`
-	ContentType         string            `json:"content_type,omitempty"`
-	ExtractionQuality   string            `json:"extraction_quality,omitempty"`
-	ConfidenceDist      map[string]int    `json:"confidence_distribution,omitempty"`
-	BlockTypeDist       map[string]int    `json:"block_type_distribution,omitempty"`
-}
-
-// FinalOutput is the structured output for the entire run.
-type FinalOutput struct {
-	Status  string      `json:"status"`
-	Results interface{} `json:"results"`
-	Stats   Stats       `json:"stats"`
-}
-
-// Stats provides summary statistics for the run.
-type Stats struct {
-	TotalURLs        int      `json:"total_urls"`
-	Successful       int      `json:"successful"`
-	Failed           int      `json:"failed"`
-	TotalTimeSeconds float64  `json:"total_time_seconds"`
-	TopKeywords      []string `json:"top_keywords,omitempty"`
-}
-
-// ResultSummaryTerse is the token-optimized v2 format with abbreviated field names.
-type ResultSummaryTerse struct {
-	URL               string         `json:"u"`
-	FilePath          string         `json:"p,omitempty"`
-	Status            int            `json:"s"`                // 0=success, 1=failed
-	Error             string         `json:"e,omitempty"`
-	FileSizeBytes     int64          `json:"sz,omitempty"`
-	EstimatedTokens   int            `json:"tk,omitempty"`
-	ContentType       string         `json:"ct,omitempty"`     // l=landing, a=article, d=docs, u=unknown
-	ExtractionQuality int            `json:"q,omitempty"`      // 1=ok, 0=low, -1=degraded
-	ConfidenceDist    [3]int         `json:"cd,omitempty"`     // [high, medium, low] fixed order
-	BlockTypeDist     map[string]int `json:"bd,omitempty"`
-}
-
-// StatsTerse is the token-optimized v2 stats format.
-type StatsTerse struct {
-	Total   int      `json:"t"`
-	Success int      `json:"ok"`
-	Failed  int      `json:"f"`
-	Time    float64  `json:"ts"`
-	Keywords []string `json:"kw,omitempty"`
-}
-
-// FinalOutputTerse is the v2 terse output wrapper.
-type FinalOutputTerse struct {
-	Status  string               `json:"s"`
-	Results []ResultSummaryTerse `json:"r"`
-	Stats   StatsTerse           `json:"st"`
-}
-
-// SummaryIndex is the ultra-minimal, scannable index format (~150 bytes/URL).
-// Only includes successful fetches (200, 301).
-type SummaryIndex struct {
-	URL    string  `yaml:"url"`
-	Cat    string  `yaml:"cat"`              // domain_category
-	Conf   float64 `yaml:"conf"`             // confidence 0-10
-	Title  string  `yaml:"title,omitempty"`
-	Desc   string  `yaml:"desc,omitempty"`   // excerpt
-	Tokens int     `yaml:"tokens,omitempty"` // estimated_tokens
-}
-
-// SummaryDetails contains full enriched metadata for decision making (~400 bytes/URL).
-// Includes all URLs (successful and failed).
-type SummaryDetails struct {
-	URL        string  `yaml:"url"`
-	FilePath   string  `yaml:"file_path,omitempty"`
-	Status     string  `yaml:"status"` // success, failed
-	StatusCode int     `yaml:"status_code,omitempty"`
-	Error      string  `yaml:"error,omitempty"`
-
-	// Basic metadata
-	Title       string `yaml:"title,omitempty"`
-	Excerpt     string `yaml:"excerpt,omitempty"`
-	SiteName    string `yaml:"site_name,omitempty"`
-	Author      string `yaml:"author,omitempty"`
-	PublishedAt string `yaml:"published_at,omitempty"`
-
-	// Smart detection
-	DomainType     string  `yaml:"domain_type,omitempty"`
-	DomainCategory string  `yaml:"domain_category,omitempty"`
-	Country        string  `yaml:"country,omitempty"`
-	Confidence     float64 `yaml:"confidence,omitempty"`
-
-	// Academic signals
-	AcademicScore  float64 `yaml:"academic_score,omitempty"`
-	HasDOI         bool    `yaml:"has_doi,omitempty"`
-	HasArXiv       bool    `yaml:"has_arxiv,omitempty"`
-	DOI            string  `yaml:"doi,omitempty"`
-	ArXivID        string  `yaml:"arxiv_id,omitempty"`
-	HasLaTeX       bool    `yaml:"has_latex,omitempty"`
-	HasCitations   bool    `yaml:"has_citations,omitempty"`
-	HasReferences  bool    `yaml:"has_references,omitempty"`
-	HasAbstract    bool    `yaml:"has_abstract,omitempty"`
-
-	// Content metrics
-	WordCount          int     `yaml:"word_count,omitempty"`
-	EstimatedTokens    int     `yaml:"estimated_tokens,omitempty"`
-	ReadTimeMin        float64 `yaml:"read_time_min,omitempty"`
-	Language           string  `yaml:"language,omitempty"`
-	LanguageConfidence float64 `yaml:"language_confidence,omitempty"`
-	ContentType        string  `yaml:"content_type,omitempty"`
-	ExtractionMode     string  `yaml:"extraction_mode,omitempty"`
-	SectionCount       int     `yaml:"section_count,omitempty"`
-	BlockCount         int     `yaml:"block_count,omitempty"`
-
-	// Visual metadata (boolean/count only, not URLs)
-	HasFavicon bool `yaml:"has_favicon,omitempty"`
-	ImageCount int  `yaml:"image_count,omitempty"`
-
-	// HTTP metadata
-	FinalURL      string   `yaml:"final_url,omitempty"`
-	RedirectChain []string `yaml:"redirect_chain,omitempty"`
-	HTTPContentType string `yaml:"http_content_type,omitempty"`
-}
-
-// FailedURL represents a URL that failed during processing.
-type FailedURL struct {
-	URL          string `yaml:"url"`
-	StatusCode   int    `yaml:"status_code"` // 0 for network errors
-	ErrorType    string `yaml:"error_type"`  // http_error, network_error, parse_error, timeout
-	ErrorMessage string `yaml:"error_message"`
-}
-
-// FailedURLs wraps the list of failed URLs for YAML output.
-type FailedURLs struct {
-	FailedURLs []FailedURL `yaml:"failed_urls"`
-}
-
-// toTerseStatus converts status string to int (0=success, 1=failed).
-func toTerseStatus(status string) int {
-	if status == "success" {
-		return 0
-	}
-	return 1
-}
-
-// toTerseContentType converts content_type to single char (l=landing, a=article, d=docs, u=unknown).
-func toTerseContentType(ct string) string {
-	switch ct {
-	case "landing":
-		return "l"
-	case "article":
-		return "a"
-	case "documentation":
-		return "d"
-	default:
-		return "u"
-	}
-}
-
-// toTerseQuality converts extraction_quality to int (1=ok, 0=low, -1=degraded).
-func toTerseQuality(q string) int {
-	switch q {
-	case "ok":
-		return 1
-	case "low":
-		return 0
-	case "degraded":
-		return -1
-	default:
-		return 0
-	}
-}
-
-// toTerseResult converts ResultSummary to ResultSummaryTerse.
-func toTerseResult(r ResultSummary) ResultSummaryTerse {
-	return ResultSummaryTerse{
-		URL:               r.URL,
-		FilePath:          r.FilePath,
-		Status:            toTerseStatus(r.Status),
-		Error:             r.Error,
-		FileSizeBytes:     r.FileSizeBytes,
-		EstimatedTokens:   r.EstimatedTokens,
-		ContentType:       toTerseContentType(r.ContentType),
-		ExtractionQuality: toTerseQuality(r.ExtractionQuality),
-		ConfidenceDist:    [3]int{r.ConfidenceDist["high"], r.ConfidenceDist["medium"], r.ConfidenceDist["low"]},
-		BlockTypeDist:     r.BlockTypeDist,
-	}
-}
-
-// toTerseStats converts Stats to StatsTerse.
-func toTerseStats(s Stats) StatsTerse {
-	return StatsTerse{
-		Total:    s.TotalURLs,
-		Success:  s.Successful,
-		Failed:   s.Failed,
-		Time:     s.TotalTimeSeconds,
-		Keywords: s.TopKeywords,
-	}
-}
-
-// fieldNameMap maps verbose field names to terse equivalents.
-var fieldNameMap = map[string]string{
-	"url":                     "u",
-	"file_path":               "p",
-	"status":                  "s",
-	"error":                   "e",
-	"file_size_bytes":         "sz",
-	"estimated_tokens":        "tk",
-	"content_type":            "ct",
-	"extraction_quality":      "q",
-	"confidence_distribution": "cd",
-	"block_type_distribution": "bd",
-}
-
-// filterResultFields filters a result struct to include only specified fields.
-// Works with both ResultSummary (v1) and ResultSummaryTerse (v2).
-func filterResultFields(result interface{}, fieldsStr string, isTerse bool) map[string]interface{} {
-	if fieldsStr == "" {
-		// No filtering, convert to map and return all fields
-		return structToMap(result)
-	}
-
-	requestedFields := strings.Split(fieldsStr, ",")
-	for i := range requestedFields {
-		requestedFields[i] = strings.TrimSpace(requestedFields[i])
-	}
-
-	// Build set of fields to include (translate verbose->terse if needed)
-	includeFields := make(map[string]bool)
-	for _, field := range requestedFields {
-		if isTerse {
-			// If terse mode, check if user provided verbose name and translate
-			if terseField, ok := fieldNameMap[field]; ok {
-				includeFields[terseField] = true
-			} else {
-				// User already provided terse name
-				includeFields[field] = true
-			}
-		} else {
-			includeFields[field] = true
-		}
-	}
-
-	// Convert struct to map
-	fullMap := structToMap(result)
-
-	// Filter map
-	filtered := make(map[string]interface{})
-	for key, value := range fullMap {
-		if includeFields[key] {
-			filtered[key] = value
-		}
-	}
-
-	return filtered
-}
-
-// structToMap converts a struct to map[string]interface{} using JSON marshaling.
-func structToMap(obj interface{}) map[string]interface{} {
-	data, _ := json.Marshal(obj)
-	var result map[string]interface{}
-	_ = json.Unmarshal(data, &result)
-	return result
-}
-
-// validateURLs checks all URLs for proper format and returns a list of invalid URLs.
-// Returns empty slice if all URLs are valid.
-func validateURLs(urls []string) []string {
-	var invalidURLs []string
-
-	// Regex pattern for valid URLs
-	// Must start with http:// or https://
-	// Must have a valid domain (alphanumeric, dots, hyphens)
-	// Can have path, query, fragment
-	urlPattern := regexp.MustCompile(`^https?://[a-zA-Z0-9][-a-zA-Z0-9.]*[a-zA-Z0-9](/[^\s]*)?$`)
-
-	for _, rawURL := range urls {
-		trimmed := strings.TrimSpace(rawURL)
-
-		// Empty URLs are invalid
-		if trimmed == "" {
-			invalidURLs = append(invalidURLs, rawURL)
-			continue
-		}
-
-		// Check basic pattern
-		if !urlPattern.MatchString(trimmed) {
-			invalidURLs = append(invalidURLs, rawURL)
-			continue
-		}
-
-		// Use net/url to validate structure
-		parsed, err := url.Parse(trimmed)
-		if err != nil {
-			invalidURLs = append(invalidURLs, rawURL)
-			continue
-		}
-
-		// Ensure scheme is http or https
-		if parsed.Scheme != "http" && parsed.Scheme != "https" {
-			invalidURLs = append(invalidURLs, rawURL)
-			continue
-		}
-
-		// Ensure host is not empty
-		if parsed.Host == "" {
-			invalidURLs = append(invalidURLs, rawURL)
-			continue
-		}
-	}
-
-	return invalidURLs
-}
 
 func main() {
 	// Will be overridden in commands based on --quiet flag
@@ -375,26 +24,71 @@ func main() {
 	app := &cli.App{
 		Name:  "llm-web-parser",
 		Usage: "A CLI tool to fetch and parse web content for LLMs.",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:  "coldstart",
+				Usage: "Show quick start guide with concepts, examples, and invariants",
+			},
+		},
+		Before: func(c *cli.Context) error {
+			if c.Bool("coldstart") {
+				fmt.Println(help.ColdstartYAML)
+				os.Exit(0)
+			}
+			return nil
+		},
 		Commands: []*cli.Command{
 			{
-				Name:   "fetch",
-				Usage:  "Fetch and parse URLs",
-				Action: fetchAction,
+				Name:  "fetch",
+				Usage: "Fetch and parse URLs",
+				Description: `EXAMPLES:
+   # Basic fetch (metadata only, no keywords)
+   llm-web-parser fetch --urls "https://example.com"
+
+   # With keywords for triage (recommended for LLMs)
+   llm-web-parser fetch --urls "https://example.com" --features wordcount
+
+   # Full content extraction
+   llm-web-parser fetch --urls "https://example.com" --features full-parse
+
+   # Inline filtering
+   llm-web-parser fetch --urls "..." --features full-parse --filter "conf:>=0.7"
+
+FEATURES:
+   minimal (default)   - Metadata only. Fast but NO keywords (can't see what URLs are about)
+   wordcount          - Adds keyword extraction (~1s extra). Shows top keywords per URL
+   full-parse         - Full content + keywords. Use for deep content analysis
+
+NOTES:
+   • Sessions auto-tracked in SQLite database (lwp-web-parser.db)
+   • Same URL = instant cache hit (no re-fetching within --max-age window)
+   • Results stored in llm-web-parser-results/ directory
+   • Next steps shown in fetch output (corpus commands, db commands)
+`,
+				Action: fetch.FetchAction,
 				Flags: []cli.Flag{
 					&cli.BoolFlag{
 						Name:  "quiet",
-						Usage: "Suppress log output (default: true, use --quiet=false for verbose logs)",
+						Usage: "Suppress log output and URL ID display (default: true, use --quiet=false for verbose output)",
 						Value: true,
 					},
 					&cli.StringFlag{
 						Name:  "features",
-						Usage: "Comma-separated list of features to enable (full-parse, wordcount). Default: minimal mode (metadata only)",
-						Value: "",
+						Usage: "Features to enable: minimal, wordcount (default), full-parse",
+						Value: "wordcount",
 					},
 					&cli.StringFlag{
 						Name:    "urls",
 						Usage:   "Comma-separated list of URLs to process",
 						Aliases: []string{"u"},
+					},
+					&cli.IntFlag{
+						Name:  "session",
+						Usage: "Refetch URLs from a previous session (use session ID)",
+					},
+					&cli.BoolFlag{
+						Name:  "failed-only",
+						Usage: "Only refetch failed URLs (requires --session)",
 					},
 					&cli.IntFlag{
 						Name:    "workers",
@@ -443,12 +137,17 @@ func main() {
 						Usage: "Comma-separated list of fields to include in summary (e.g., 'url,tokens,quality'). Empty = all fields.",
 						Value: "",
 					},
+					&cli.StringFlag{
+						Name:  "filter",
+						Usage: "Filter parsed content by confidence/type (e.g., 'conf:>=0.7', 'type:code', 'conf:>=0.8,type:p|code')",
+						Value: "",
+					},
 				},
 			},
 			{
 				Name:   "extract",
-				Usage:  "Extract filtered content from existing JSON results",
-				Action: extractAction,
+				Usage:  "DEPRECATED: Use 'fetch --filter' instead",
+				Action: analyze.ExtractAction,
 				Flags: []cli.Flag{
 					&cli.StringSliceFlag{
 						Name:    "from",
@@ -464,8 +163,8 @@ func main() {
 			},
 			{
 				Name:   "analyze",
-				Usage:  "Parse cached HTML on-demand with specified features",
-				Action: analyzeAction,
+				Usage:  "DEPRECATED: Use 'fetch' instead (auto-detects cache)",
+				Action: analyze.AnalyzeAction,
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:    "urls",
@@ -494,6 +193,226 @@ func main() {
 					},
 				},
 			},
+			{
+				Name:  "db",
+				Usage: "Database operations",
+				Subcommands: []*cli.Command{
+					{
+						Name:  "init",
+						Usage: "Initialize database schema",
+						Action: func(c *cli.Context) error {
+							database, err := dbpkg.Open()
+							if err != nil {
+								return fmt.Errorf("failed to open database: %w", err)
+							}
+							defer database.Close()
+
+							if err := database.InitSchema(); err != nil {
+								return fmt.Errorf("failed to initialize schema: %w", err)
+							}
+
+							fmt.Printf("Database initialized at: %s\n", database.Path())
+							return nil
+						},
+					},
+					{
+						Name:  "sessions",
+						Usage: "List all sessions",
+						Flags: []cli.Flag{
+							&cli.IntFlag{
+								Name:  "limit",
+								Usage: "Maximum number of sessions to show (0 = all)",
+								Value: 20,
+							},
+						},
+						Action: db.SessionsAction,
+					},
+					{
+						Name:      "session",
+						Usage:     "Show session details (defaults to latest)",
+						ArgsUsage: "[session_id]",
+						Action:    db.SessionAction,
+					},
+					{
+						Name:      "get",
+						Usage:     "Retrieve session content (defaults to latest)",
+						ArgsUsage: "[session_id]",
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:  "file",
+								Usage: "Which file to show: index, details, failed (default: details)",
+								Value: "details",
+							},
+						},
+						Action: db.GetSessionAction,
+					},
+					{
+						Name:      "urls",
+						Usage:     "Show URLs for a session (defaults to latest)",
+						ArgsUsage: "[session_id]",
+						Flags: []cli.Flag{
+							&cli.BoolFlag{
+								Name:  "sanitized",
+								Usage: "Show only URLs that were auto-cleaned",
+							},
+						},
+						Action: db.UrlsAction,
+					},
+					{
+						Name:  "query",
+						Usage: "Query sessions with filters",
+						Flags: []cli.Flag{
+							&cli.BoolFlag{
+								Name:  "today",
+								Usage: "Show only sessions created today",
+							},
+							&cli.BoolFlag{
+								Name:  "failed",
+								Usage: "Show only sessions with failed URLs",
+							},
+							&cli.StringFlag{
+								Name:  "url",
+								Usage: "Filter by URL pattern (LIKE match)",
+							},
+						},
+						Action: db.QuerySessionsAction,
+					},
+					{
+						Name:      "show",
+						Usage:     "Show parsed JSON for a URL (by ID or URL)",
+						ArgsUsage: "<url_id_or_url>",
+						Action:    db.ShowAction,
+					},
+					{
+						Name:      "raw",
+						Usage:     "Show raw HTML for a URL (by ID or URL)",
+						ArgsUsage: "<url_id_or_url>",
+						Action:    db.RawAction,
+					},
+					{
+						Name:      "find-url",
+						Usage:     "Find the URL ID for a given URL",
+						ArgsUsage: "<url>",
+						Action:    db.FindURLAction,
+					},
+				},
+			},
+			{
+				Name:  "corpus",
+				Usage: "Corpus API - query and analyze web content collections",
+				Subcommands: []*cli.Command{
+					{
+						Name:   "extract",
+						Usage:  "Extract and aggregate keywords from URLs",
+						Action: corpusactions.CorpusAction,
+						Flags: []cli.Flag{
+							&cli.IntFlag{Name: "session", Usage: "Session ID (extract keywords from all URLs in session)"},
+							&cli.StringFlag{Name: "url-ids", Usage: "Comma-separated URL IDs (e.g., 1,3,5)"},
+							&cli.IntFlag{Name: "top", Value: 25, Usage: "Return top N keywords (0 for all)"},
+							&cli.StringFlag{Name: "format", Value: "json", Usage: "Output format (json, yaml, csv)"},
+						},
+					},
+					{
+						Name:   "query",
+						Usage:  "Boolean filtering over metadata",
+						Action: corpusactions.CorpusAction,
+						Flags: []cli.Flag{
+							&cli.StringFlag{Name: "filter", Usage: "Filter expression (e.g., 'has_code AND citations>50')"},
+							&cli.IntFlag{Name: "session", Usage: "Session ID"},
+							&cli.StringFlag{Name: "view", Usage: "View name"},
+							&cli.StringFlag{Name: "format", Value: "json", Usage: "Output format (json, yaml, csv)"},
+						},
+					},
+					{
+						Name:   "compare",
+						Usage:  "Cross-document analysis (consensus, contradictions, approaches)",
+						Action: corpusactions.CorpusAction,
+						Flags: []cli.Flag{
+							&cli.IntFlag{Name: "session", Usage: "Session ID"},
+							&cli.StringFlag{Name: "view", Usage: "View name"},
+							&cli.StringFlag{Name: "format", Value: "json", Usage: "Output format (json, yaml, csv)"},
+						},
+					},
+					{
+						Name:   "detect",
+						Usage:  "Pattern recognition (clusters, warnings, gaps, anomalies, trends)",
+						Action: corpusactions.CorpusAction,
+						Flags: []cli.Flag{
+							&cli.IntFlag{Name: "session", Usage: "Session ID"},
+							&cli.StringFlag{Name: "view", Usage: "View name"},
+							&cli.StringFlag{Name: "format", Value: "json", Usage: "Output format (json, yaml, csv)"},
+						},
+					},
+					{
+						Name:   "normalize",
+						Usage:  "Canonicalize entities, dates, versions, code",
+						Action: corpusactions.CorpusAction,
+						Flags: []cli.Flag{
+							&cli.IntFlag{Name: "session", Usage: "Session ID"},
+							&cli.StringFlag{Name: "view", Usage: "View name"},
+							&cli.StringFlag{Name: "format", Value: "json", Usage: "Output format (json, yaml, csv)"},
+						},
+					},
+					{
+						Name:   "trace",
+						Usage:  "Citation graphs, authority scoring, provenance",
+						Action: corpusactions.CorpusAction,
+						Flags: []cli.Flag{
+							&cli.IntFlag{Name: "session", Usage: "Session ID"},
+							&cli.StringFlag{Name: "view", Usage: "View name"},
+							&cli.StringFlag{Name: "format", Value: "json", Usage: "Output format (json, yaml, csv)"},
+						},
+					},
+					{
+						Name:   "score",
+						Usage:  "Confidence and quality metrics",
+						Action: corpusactions.CorpusAction,
+						Flags: []cli.Flag{
+							&cli.IntFlag{Name: "session", Usage: "Session ID"},
+							&cli.StringFlag{Name: "view", Usage: "View name"},
+							&cli.StringFlag{Name: "format", Value: "json", Usage: "Output format (json, yaml, csv)"},
+						},
+					},
+					{
+						Name:   "delta",
+						Usage:  "Incremental updates (what changed since baseline)",
+						Action: corpusactions.CorpusAction,
+						Flags: []cli.Flag{
+							&cli.IntFlag{Name: "session", Usage: "Session ID"},
+							&cli.StringFlag{Name: "view", Usage: "View name"},
+							&cli.StringFlag{Name: "format", Value: "json", Usage: "Output format (json, yaml, csv)"},
+						},
+					},
+					{
+						Name:   "summarize",
+						Usage:  "Structured synthesis (decision-inputs, timelines, matrices)",
+						Action: corpusactions.CorpusAction,
+						Flags: []cli.Flag{
+							&cli.IntFlag{Name: "session", Usage: "Session ID"},
+							&cli.StringFlag{Name: "view", Usage: "View name"},
+							&cli.StringFlag{Name: "format", Value: "json", Usage: "Output format (json, yaml, csv)"},
+						},
+					},
+					{
+						Name:   "suggest",
+						Usage:  "Suggest queries based on session contents",
+						Action: corpusactions.SuggestAction,
+						Flags: []cli.Flag{
+							&cli.IntFlag{Name: "session", Usage: "Session ID", Required: true},
+						},
+					},
+					{
+						Name:   "explain-failure",
+						Usage:  "Diagnostic transparency for low confidence / failures",
+						Action: corpusactions.CorpusAction,
+						Flags: []cli.Flag{
+							&cli.IntFlag{Name: "session", Usage: "Session ID"},
+							&cli.StringFlag{Name: "view", Usage: "View name"},
+							&cli.StringFlag{Name: "format", Value: "json", Usage: "Output format (json, yaml, csv)"},
+						},
+					},
+				},
+			},
 		},
 	}
 
@@ -502,880 +421,3 @@ func main() {
 		os.Exit(1)
 	}
 }
-
-func analyzeAction(c *cli.Context) error {
-	logLevel := slog.LevelInfo
-	if c.Bool("quiet") {
-		logLevel = slog.LevelError
-	}
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel}))
-
-	// Parse max-age
-	maxAge, err := time.ParseDuration(c.String("max-age"))
-	if err != nil {
-		return fmt.Errorf("invalid max-age duration: %w", err)
-	}
-
-	// Initialize artifact manager
-	manager, err := artifact_manager.NewManager(c.String("output-dir"), maxAge)
-	if err != nil {
-		return fmt.Errorf("failed to initialize artifact manager: %w", err)
-	}
-
-	// Get URLs
-	urlsStr := c.String("urls")
-	if urlsStr == "" {
-		return fmt.Errorf("no URLs provided via --urls flag")
-	}
-	urls := strings.Split(urlsStr, ",")
-
-	// Parse features flag
-	parseMode := parseFeaturesFlag(c.String("features"))
-	logger.Info("Analyzing cached URLs", "count", len(urls), "parse_mode", parseMode)
-
-	// Initialize parser
-	p := &parser.Parser{}
-	a := &analytics.Analytics{}
-
-	results := make([]Result, 0, len(urls))
-	for _, url := range urls {
-		url = strings.TrimSpace(url)
-		logger.Info("Analyzing URL from cache", "url", url)
-
-		// Load cached HTML
-		rawHTML, isFresh, err := manager.GetRawHTML(url)
-		if err != nil {
-			logger.Error("Failed to load cached HTML", "url", url, "error", err)
-			results = append(results, Result{
-				URL:       url,
-				Error:     fmt.Errorf("cache error: %w", err),
-				ErrorType: "cache_error",
-			})
-			continue
-		}
-		if !isFresh || rawHTML == nil {
-			logger.Error("Cached HTML not found or stale", "url", url)
-			results = append(results, Result{
-				URL:       url,
-				Error:     fmt.Errorf("cache miss: HTML not found or stale"),
-				ErrorType: "cache_miss",
-			})
-			continue
-		}
-
-		// Parse with specified mode
-		result := Result{URL: url}
-		page, parseErr := p.Parse(models.ParseRequest{
-			URL:  url,
-			HTML: string(rawHTML),
-			Mode: parseMode,
-		})
-
-		if parseErr != nil {
-			logger.Error("Failed to parse HTML", "url", url, "error", parseErr)
-			result.Error = parseErr
-			result.ErrorType = "parse_error"
-			results = append(results, result)
-			continue
-		}
-
-		result.Page = page
-
-		// Compute metadata if not already done
-		if !page.Metadata.Computed {
-			page.ComputeMetadata()
-		}
-
-		// Extract word counts for analytics
-		if parseMode != models.ParseModeMinimal {
-			wordCounts := mapreduce.Map(page.ToPlainText(), a)
-			result.WordCounts = wordCounts
-		}
-
-		// Save parsed result
-		jsonData, err := json.Marshal(page)
-		if err != nil {
-			logger.Warn("Failed to marshal parsed result", "url", url, "error", err)
-		} else {
-			if saveErr := manager.SetParsedJSON(url, jsonData); saveErr != nil {
-				logger.Warn("Failed to save parsed result", "url", url, "error", saveErr)
-			} else {
-				filePath, _ := manager.GetArtifactPath("parsed", url, ".json")
-				result.FilePath = filePath
-				// Get file size
-				if info, err := os.Stat(filePath); err == nil {
-					result.FileSizeBytes = info.Size()
-				}
-			}
-		}
-
-		results = append(results, result)
-		logger.Info("Successfully analyzed URL", "url", url, "file_path", result.FilePath)
-	}
-
-	// Output results
-	finalOutput := &FinalOutput{
-		Status: "success",
-	}
-
-	summaryResults := make([]ResultSummary, 0, len(results))
-	for _, r := range results {
-		summary := buildSummary(r)
-		summaryResults = append(summaryResults, summary)
-	}
-	finalOutput.Results = summaryResults
-
-	// Build stats
-	stats := Stats{
-		TotalURLs: len(urls),
-	}
-	for _, r := range results {
-		if r.Error != nil {
-			stats.Failed++
-		} else {
-			stats.Successful++
-		}
-	}
-	finalOutput.Stats = stats
-
-	// Output JSON
-	outputData, err := json.MarshalIndent(finalOutput, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal output: %w", err)
-	}
-
-	fmt.Println(string(outputData))
-	return nil
-}
-
-func extractAction(c *cli.Context) error {
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	from := c.StringSlice("from")
-	strategyStr := c.String("strategy")
-
-	if len(from) == 0 {
-		return fmt.Errorf("no input files provided with --from flag")
-	}
-
-	strategy, err := extractor.ParseStrategy(strategyStr)
-	if err != nil {
-		return fmt.Errorf("failed to parse strategy: %w", err)
-	}
-
-	var filePaths []string
-	for _, pattern := range from {
-		matches, err := filepath.Glob(pattern)
-		if err != nil {
-			logger.Warn("error matching glob pattern, skipping", "pattern", pattern, "error", err)
-			continue
-		}
-		filePaths = append(filePaths, matches...)
-	}
-
-	if len(filePaths) == 0 {
-		return fmt.Errorf("no files found matching glob patterns")
-	}
-
-	logger.Info("extracting from files", "count", len(filePaths), "strategy", strategyStr)
-
-	allFilteredPages := []*models.Page{}
-
-	for _, path := range filePaths {
-		data, err := os.ReadFile(filepath.Clean(path))
-		if err != nil {
-			logger.Warn("failed to read file, skipping", "path", path, "error", err)
-			continue
-		}
-
-		var page models.Page
-		if err := json.Unmarshal(data, &page); err != nil {
-			logger.Warn("failed to unmarshal JSON, skipping", "path", path, "error", err)
-			continue
-		}
-
-		filteredPage := extractor.FilterPage(&page, strategy)
-		allFilteredPages = append(allFilteredPages, filteredPage)
-	}
-
-	outputData, err := json.MarshalIndent(allFilteredPages, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal final filtered output: %w", err)
-	}
-	fmt.Println(string(outputData))
-
-	return nil
-}
-
-func fetchAction(c *cli.Context) error {
-	logLevel := slog.LevelInfo
-	if c.Bool("quiet") {
-		logLevel = slog.LevelError
-	}
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel}))
-	startTime := time.Now()
-	finalOutput := &FinalOutput{}
-
-	var maxAge time.Duration
-	var err error
-	if c.Bool("force-fetch") {
-		maxAge = 0
-	} else {
-		maxAge, err = time.ParseDuration(c.String("max-age"))
-		if err != nil {
-			logger.Error("invalid max-age duration", "error", err)
-			os.Exit(2)
-		}
-	}
-
-	manager, err := artifact_manager.NewManager(c.String("output-dir"), maxAge)
-	if err != nil {
-		logger.Error("failed to initialize artifact manager", "error", err)
-		os.Exit(2)
-	}
-
-	config, err := models.LoadConfig(c.String("config"))
-	if err != nil {
-		if !os.IsNotExist(err) {
-			logger.Error("failed to load config", "error", err)
-			os.Exit(2)
-		}
-		config = &models.Config{}
-	}
-
-	if c.IsSet("urls") {
-		config.URLs = strings.Split(c.String("urls"), ",")
-	}
-	if c.IsSet("workers") {
-		config.WorkerCount = c.Int("workers")
-	}
-
-	if len(config.URLs) == 0 {
-		cli.ShowAppHelpAndExit(c, 1)
-		return fmt.Errorf("no URLs provided via --urls flag or config file")
-	}
-
-	// Validate all URLs before processing (fail fast)
-	invalidURLs := validateURLs(config.URLs)
-	if len(invalidURLs) > 0 {
-		fmt.Fprintf(os.Stderr, "Error: %d URL(s) are malformed:\n", len(invalidURLs))
-		for _, badURL := range invalidURLs {
-			fmt.Fprintf(os.Stderr, "  - %s\n", badURL)
-		}
-		os.Exit(1)
-	}
-
-	// Generate session ID from URLs
-	sessionID := session.GenerateSessionID(config.URLs)
-	outputDir := c.String("output-dir")
-	logger.Info("Session ID generated", "session_id", sessionID)
-
-	// Check if session exists and is fresh (unless force-fetch is set)
-	if !c.Bool("force-fetch") && session.IsSessionFresh(outputDir, sessionID, maxAge) {
-		logger.Info("Session cache hit - returning cached summaries", "session_id", sessionID)
-		// Print concise output and return
-		sessionDir := session.GetSessionDir(outputDir, sessionID)
-		fmt.Printf("Session cache hit! Results from: %s\n", sessionDir)
-		return nil
-	}
-
-	// Parse features flag to determine ParseMode
-	parseMode := parseFeaturesFlag(c.String("features"))
-	logger.Info("Parse mode determined", "mode", parseMode, "features", c.String("features"))
-
-	allResults, finalWordCounts, runErr := run(logger, config, manager, c.Bool("force-fetch"), parseMode)
-
-	stats := Stats{
-		TotalURLs:        len(config.URLs),
-		TotalTimeSeconds: time.Since(startTime).Seconds(),
-		TopKeywords:      mapreduce.TopKeywords(finalWordCounts, 25),
-	}
-
-	var summaryResults []ResultSummary
-	outputMode := strings.ToLower(c.String("output-mode"))
-	switch outputMode {
-	case "tier2":
-		// Two-tier summary system: write to session directory, print concise stats
-		// Count success/failed
-		var successCount, failedCount int
-		for _, r := range allResults {
-			if r.Error != nil {
-				failedCount++
-			} else {
-				successCount++
-			}
-		}
-
-		// Create session directory
-		if err := session.EnsureSessionDir(outputDir, sessionID); err != nil {
-			return fmt.Errorf("failed to create session directory: %w", err)
-		}
-
-		// Generate FIELDS.yaml reference (only if it doesn't exist)
-		if err := session.GenerateFieldsReference(outputDir); err != nil {
-			logger.Warn("Failed to generate FIELDS.yaml reference", "error", err)
-		}
-
-		// Write summaries to session directory
-		sessionDir := session.GetSessionDir(outputDir, sessionID)
-		if err := writeSummaryIndexToSession(allResults, sessionDir); err != nil {
-			return fmt.Errorf("failed to write summary index: %w", err)
-		}
-		if err := writeSummaryDetailsToSession(allResults, sessionDir); err != nil {
-			return fmt.Errorf("failed to write summary details: %w", err)
-		}
-
-		// Collect and write failed URLs if any
-		failedURLs := collectFailedURLs(allResults)
-		if err := writeFailedURLsToSession(failedURLs, sessionDir); err != nil {
-			logger.Warn("Failed to write failed URLs file", "error", err)
-		}
-
-		// Update sessions index
-		sessionInfo := session.Info{
-			SessionID:   sessionID,
-			Created:     time.Now(),
-			URLCount:    len(config.URLs),
-			Success:     successCount,
-			Failed:      failedCount,
-			Features:    session.FormatFeatures(c.String("features")),
-			URLsPreview: session.GetURLsPreview(config.URLs, 3),
-		}
-		if err := session.UpdateSessionIndex(outputDir, sessionInfo); err != nil {
-			logger.Warn("Failed to update sessions index", "error", err)
-		}
-
-		// Print concise stats to stdout
-		if failedCount > 0 {
-			fmt.Printf("Parsed %d URLs - %d success, %d failed (see %s/failed-urls.yaml). Summary files in %s. Features enabled: %s\n",
-				len(config.URLs), successCount, failedCount, sessionDir, sessionDir, c.String("features"))
-		} else {
-			fmt.Printf("Parsed %d URLs - %d success, %d failed. Summary files in %s. Features enabled: %s\n",
-				len(config.URLs), successCount, failedCount, sessionDir, c.String("features"))
-		}
-
-		return nil
-	case "summary":
-		summaryResults = []ResultSummary{}
-		for _, r := range allResults {
-			summary := buildSummary(r)
-			summaryResults = append(summaryResults, summary)
-			if r.Error != nil {
-				stats.Failed++
-			} else {
-				stats.Successful++
-			}
-		}
-		finalOutput.Results = summaryResults
-	default:
-		legacyResults := []ResultOutput{}
-		for _, r := range allResults {
-			legacy := ResultOutput{URL: r.URL, FilePath: r.FilePath}
-			if r.Error != nil {
-				stats.Failed++
-				legacy.Status = "failed"
-				legacy.Error = r.Error.Error()
-				legacy.ErrorType = r.ErrorType
-			} else {
-				stats.Successful++
-				legacy.Status = "success"
-			}
-			legacyResults = append(legacyResults, legacy)
-		}
-		finalOutput.Results = legacyResults
-	}
-
-	finalOutput.Stats = stats
-	if runErr != nil {
-		finalOutput.Status = "partial_failure"
-	} else {
-		finalOutput.Status = "success"
-	}
-
-	var outputData []byte
-	var marshalErr error
-	outputFormat := strings.ToLower(c.String("format"))
-	summaryVersion := strings.ToLower(c.String("summary-version"))
-	summaryFields := c.String("summary-fields")
-
-	// Apply field filtering if requested
-	if summaryFields != "" && outputMode == "summary" {
-		isTerse := summaryVersion == "v2"
-
-		// Convert results to terse if v2
-		var resultsToFilter []interface{}
-		if isTerse {
-			terseResults := make([]ResultSummaryTerse, len(summaryResults))
-			for i, r := range summaryResults {
-				terseResults[i] = toTerseResult(r)
-			}
-			for i := range terseResults {
-				resultsToFilter = append(resultsToFilter, terseResults[i])
-			}
-		} else {
-			for i := range summaryResults {
-				resultsToFilter = append(resultsToFilter, summaryResults[i])
-			}
-		}
-
-		// Filter each result
-		filteredResults := make([]map[string]interface{}, len(resultsToFilter))
-		for i, r := range resultsToFilter {
-			filteredResults[i] = filterResultFields(r, summaryFields, isTerse)
-		}
-
-		// Build custom output structure
-		customOutput := map[string]interface{}{
-			"status":  finalOutput.Status,
-			"results": filteredResults,
-			"stats":   toTerseStats(stats),
-		}
-
-		if outputFormat == "yaml" {
-			outputData, marshalErr = yaml.Marshal(customOutput)
-		} else {
-			outputData, marshalErr = json.MarshalIndent(customOutput, "", "  ")
-		}
-	} else if summaryVersion == "v2" && outputMode == "summary" {
-		// Use terse format without field filtering
-		terseResults := make([]ResultSummaryTerse, len(summaryResults))
-		for i, r := range summaryResults {
-			terseResults[i] = toTerseResult(r)
-		}
-
-		terseFinalOutput := FinalOutputTerse{
-			Status:  finalOutput.Status,
-			Results: terseResults,
-			Stats:   toTerseStats(stats),
-		}
-
-		if outputFormat == "yaml" {
-			outputData, marshalErr = yaml.Marshal(terseFinalOutput)
-		} else {
-			outputData, marshalErr = json.MarshalIndent(terseFinalOutput, "", "  ")
-		}
-	} else {
-		// Use regular format (v1) without field filtering
-		if outputFormat == "yaml" {
-			outputData, marshalErr = yaml.Marshal(finalOutput)
-		} else {
-			outputData, marshalErr = json.MarshalIndent(finalOutput, "", "  ")
-		}
-	}
-
-	if marshalErr != nil {
-		logger.Error("failed to marshal final output", "error", marshalErr)
-		os.Exit(2)
-	}
-	fmt.Println(string(outputData))
-
-	if stats.Failed == stats.TotalURLs {
-		os.Exit(2)
-	}
-	if stats.Failed > 0 {
-		os.Exit(1)
-	}
-
-	return nil
-}
-
-func run(logger *slog.Logger, config *models.Config, manager *artifact_manager.Manager, forceFetch bool, parseMode models.ParseMode) ([]Result, map[string]int, error) {
-	f := fetcher.NewFetcher()
-	p := &parser.Parser{}
-	a := &analytics.Analytics{}
-
-	logger.Info("Starting concurrent fetch phase", "url_count", len(config.URLs), "workers", config.WorkerCount, "force_fetch", forceFetch, "max_age", manager.MaxAge())
-	var wg sync.WaitGroup
-	jobs := make(chan Job, len(config.URLs))
-	results := make(chan Result, len(config.URLs))
-
-	for w := 1; w <= config.WorkerCount; w++ {
-		wg.Add(1)
-		go worker(w, logger, manager, f, p, a, &wg, jobs, results, forceFetch)
-	}
-
-	for _, rawURL := range config.URLs {
-		jobs <- Job{URL: rawURL, ParseMode: parseMode}
-	}
-	close(jobs)
-
-	wg.Wait()
-	close(results)
-	logger.Info("All fetch workers finished")
-
-	allResults := make([]Result, 0, len(config.URLs))
-	var runErr error
-	for result := range results {
-		allResults = append(allResults, result)
-		if result.Error != nil {
-			runErr = fmt.Errorf("one or more jobs failed")
-		}
-		if result.Page != nil && !result.Page.Metadata.Computed {
-			result.Page.ComputeMetadata()
-		}
-	}
-
-	logger.Info("Starting MapReduce phase")
-	intermediateResults := []map[string]int{}
-	for _, result := range allResults {
-		if result.WordCounts != nil {
-			intermediateResults = append(intermediateResults, result.WordCounts)
-		}
-	}
-	finalWordCounts := mapreduce.Reduce(intermediateResults)
-
-	return allResults, finalWordCounts, runErr
-}
-
-func processHTML(id int, logger *slog.Logger, url string, rawHTML []byte, manager *artifact_manager.Manager, p *parser.Parser, a *analytics.Analytics, results chan<- Result, parseMode models.ParseMode) {
-	result := Result{URL: url}
-
-	page, parseErr := p.Parse(models.ParseRequest{
-		URL:  url,
-		HTML: string(rawHTML),
-		Mode: parseMode,
-	})
-	if parseErr != nil {
-		logger.Error("Error parsing HTML", "worker_id", id, "url", url, "error", parseErr)
-		result.Error = parseErr
-		result.ErrorType = "parse_error"
-		results <- result
-		return
-	}
-
-	wordCounts := mapreduce.Map(page.ToPlainText(), a)
-	result.WordCounts = wordCounts
-
-	jsonData, marshalErr := json.MarshalIndent(page, "", "  ")
-	if marshalErr != nil {
-		logger.Error("Error marshalling JSON", "worker_id", id, "url", url, "error", marshalErr)
-		result.Error = marshalErr
-		result.ErrorType = "marshal_error"
-		result.Page = page
-		results <- result
-		return
-	}
-
-	if setParsedErr := manager.SetParsedJSON(url, jsonData); setParsedErr != nil {
-		logger.Warn("Failed to store parsed JSON artifact", "url", url, "error", setParsedErr)
-	}
-	result.FilePath, _ = manager.GetArtifactPath(artifact_manager.ParsedJSONDir, url, ".json")
-
-	result.FileSizeBytes = int64(len(jsonData))
-	result.Page = page
-	results <- result
-	logger.Info("Worker finished processing", "worker_id", id, "url", url)
-}
-
-func worker(id int, logger *slog.Logger, manager *artifact_manager.Manager, f *fetcher.Fetcher, p *parser.Parser, a *analytics.Analytics, wg *sync.WaitGroup, jobs <-chan Job, results chan<- Result, forceFetch bool) {
-	defer wg.Done()
-	for job := range jobs {
-		logger.Info("Worker started job", "worker_id", id, "url", job.URL)
-
-		var rawHTML []byte
-		var err error
-		var fresh bool
-
-		if !forceFetch {
-			rawHTML, fresh, err = manager.GetRawHTML(job.URL)
-			if err != nil {
-				logger.Warn("Error checking artifact storage, fetching fresh", "url", job.URL, "error", err)
-			}
-		}
-
-		if fresh {
-			logger.Info("Raw HTML found in storage, using it", "worker_id", id, "url", job.URL)
-		} else {
-			logger.Info("Raw HTML not found or stale, fetching from network", "worker_id", id, "url", job.URL)
-			rawHTML, err = f.GetHtmlBytes(job.URL)
-			if err != nil {
-				result := Result{URL: job.URL}
-				logger.Error("Error fetching HTML", "worker_id", id, "url", job.URL, "error", err)
-				result.Error = err
-				result.ErrorType = "fetch_error"
-				results <- result
-				continue
-			}
-
-			if err := manager.SetRawHTML(job.URL, rawHTML); err != nil {
-				logger.Warn("Failed to store raw HTML artifact", "url", job.URL, "error", err)
-			}
-		}
-
-		processHTML(id, logger, job.URL, rawHTML, manager, p, a, results, job.ParseMode)
-	}
-}
-
-// parseFeaturesFlag converts features string to ParseMode
-func parseFeaturesFlag(features string) models.ParseMode {
-	if features == "" {
-		return models.ParseModeMinimal // Default: minimal (metadata only)
-	}
-
-	// Parse comma-separated features
-	featureList := strings.Split(features, ",")
-	for _, f := range featureList {
-		f = strings.TrimSpace(strings.ToLower(f))
-		switch f {
-		case "full-parse":
-			return models.ParseModeFull
-		case "wordcount":
-			// wordcount requires at least cheap parsing
-			return models.ParseModeCheap
-		}
-	}
-
-	// If no recognized features, default to minimal
-	return models.ParseModeMinimal
-}
-
-func buildSummary(r Result) ResultSummary {
-	summary := ResultSummary{
-		URL:           r.URL,
-		FilePath:      r.FilePath,
-		FileSizeBytes: r.FileSizeBytes,
-	}
-	if r.Error != nil {
-		summary.Status = "failed"
-		summary.Error = r.Error.Error()
-	} else {
-		summary.Status = "success"
-		summary.EstimatedTokens = int(math.Round(float64(r.Page.Metadata.WordCount) / 2.5))
-		summary.ContentType = r.Page.Metadata.ContentType
-		summary.ExtractionQuality = r.Page.Metadata.ExtractionQuality
-		summary.ConfidenceDist = computeConfidenceDist(r.Page)
-		summary.BlockTypeDist = computeBlockTypeDist(r.Page)
-	}
-	return summary
-}
-
-// buildSummaryIndex creates minimal index entry (only for successful fetches)
-func buildSummaryIndex(r Result) *SummaryIndex {
-	if r.Error != nil {
-		return nil // Only include successful fetches
-	}
-
-	return &SummaryIndex{
-		URL:    r.URL,
-		Cat:    r.Page.Metadata.DomainCategory,
-		Conf:   r.Page.Metadata.Confidence,
-		Title:  r.Page.Title,
-		Desc:   r.Page.Metadata.Excerpt,
-		Tokens: int(math.Round(float64(r.Page.Metadata.WordCount) / 2.5)),
-	}
-}
-
-// buildSummaryDetails creates full details entry (all URLs)
-func buildSummaryDetails(r Result) SummaryDetails {
-	details := SummaryDetails{
-		URL:      r.URL,
-		FilePath: r.FilePath,
-	}
-
-	if r.Error != nil {
-		details.Status = "failed"
-		details.Error = r.Error.Error()
-		return details
-	}
-
-	details.Status = "success"
-	meta := r.Page.Metadata
-
-	// Basic metadata
-	details.Title = r.Page.Title
-	details.Excerpt = meta.Excerpt
-	details.SiteName = meta.SiteName
-	details.Author = meta.Author
-	details.PublishedAt = meta.PublishedTime
-
-	// Smart detection
-	details.DomainType = meta.DomainType
-	details.DomainCategory = meta.DomainCategory
-	details.Country = meta.Country
-	details.Confidence = meta.Confidence
-
-	// Academic signals
-	details.AcademicScore = meta.AcademicScore
-	details.HasDOI = meta.HasDOI
-	details.HasArXiv = meta.HasArXiv
-	details.DOI = meta.DOIPattern
-	details.ArXivID = meta.ArXivID
-	details.HasLaTeX = meta.HasLaTeX
-	details.HasCitations = meta.HasCitations
-	details.HasReferences = meta.HasReferences
-	details.HasAbstract = meta.HasAbstract
-
-	// Content metrics
-	details.WordCount = meta.WordCount
-	details.EstimatedTokens = int(math.Round(float64(meta.WordCount) / 2.5))
-	details.ReadTimeMin = meta.EstimatedReadMin
-	details.Language = meta.Language
-	details.LanguageConfidence = meta.LanguageConfidence
-	details.ContentType = meta.ContentType
-	details.ExtractionMode = string(meta.ExtractionMode)
-	details.SectionCount = meta.SectionCount
-	details.BlockCount = meta.BlockCount
-
-	// Visual metadata (boolean/count only)
-	details.HasFavicon = meta.Favicon != ""
-	// TODO: Count images from content blocks when in full-parse mode
-	details.ImageCount = 0
-	if meta.Image != "" {
-		details.ImageCount = 1 // At minimum, we have the main image
-	}
-
-	// HTTP metadata
-	details.StatusCode = meta.StatusCode
-	details.FinalURL = meta.FinalURL
-	details.RedirectChain = meta.RedirectChain
-	details.HTTPContentType = meta.HTTPContentType
-
-	return details
-}
-
-// writeSummaryIndexToSession writes the summary index to a session directory (file, not stdout)
-func writeSummaryIndexToSession(results []Result, sessionDir string) error {
-	var index []SummaryIndex
-
-	for _, r := range results {
-		if entry := buildSummaryIndex(r); entry != nil {
-			index = append(index, *entry)
-		}
-	}
-
-	// Create output path
-	outputPath := filepath.Join(sessionDir, "summary-index.yaml")
-
-	// Marshal to YAML
-	yamlBytes, err := yaml.Marshal(index)
-	if err != nil {
-		return fmt.Errorf("failed to marshal index to YAML: %w", err)
-	}
-
-	// Write to file
-	if err := os.WriteFile(outputPath, yamlBytes, 0600); err != nil {
-		return fmt.Errorf("failed to write index file: %w", err)
-	}
-
-	return nil
-}
-
-// writeSummaryDetailsToSession writes the full details to a session directory
-func writeSummaryDetailsToSession(results []Result, sessionDir string) error {
-	details := make([]SummaryDetails, 0, len(results))
-
-	for _, r := range results {
-		details = append(details, buildSummaryDetails(r))
-	}
-
-	// Create output path
-	outputPath := filepath.Join(sessionDir, "summary-details.yaml")
-
-	// Marshal to YAML
-	yamlBytes, err := yaml.Marshal(details)
-	if err != nil {
-		return fmt.Errorf("failed to marshal details to YAML: %w", err)
-	}
-
-	// Write to file
-	if err := os.WriteFile(outputPath, yamlBytes, 0600); err != nil {
-		return fmt.Errorf("failed to write details file: %w", err)
-	}
-
-	return nil
-}
-
-func computeConfidenceDist(page *models.Page) map[string]int {
-	dist := map[string]int{"high": 0, "medium": 0, "low": 0}
-	if page == nil {
-		return dist
-	}
-	for _, block := range page.AllTextBlocks() {
-		switch {
-		case block.Confidence >= 0.7:
-			dist["high"]++
-		case block.Confidence >= 0.5:
-			dist["medium"]++
-		default:
-			dist["low"]++
-		}
-	}
-	return dist
-}
-
-func computeBlockTypeDist(page *models.Page) map[string]int {
-	dist := make(map[string]int)
-	if page == nil {
-		return dist
-	}
-	for _, block := range page.AllTextBlocks() {
-		dist[block.Type]++
-	}
-	return dist
-}
-
-// collectFailedURLs extracts failed URLs from results and creates FailedURL objects.
-func collectFailedURLs(results []Result) []FailedURL {
-	var failed []FailedURL
-
-	for _, r := range results {
-		if r.Error != nil {
-			failedURL := FailedURL{
-				URL:          r.URL,
-				StatusCode:   0, // Default to 0 for network errors
-				ErrorType:    r.ErrorType,
-				ErrorMessage: r.Error.Error(),
-			}
-
-			// Try to get status code if available from page metadata
-			if r.Page != nil && r.Page.Metadata.StatusCode > 0 {
-				failedURL.StatusCode = r.Page.Metadata.StatusCode
-			}
-
-			// Classify error type if not set
-			if failedURL.ErrorType == "" {
-				errMsg := strings.ToLower(r.Error.Error())
-				switch {
-				case strings.Contains(errMsg, "timeout"):
-					failedURL.ErrorType = "timeout"
-				case strings.Contains(errMsg, "parse") || strings.Contains(errMsg, "unmarshal"):
-					failedURL.ErrorType = "parse_error"
-				case strings.Contains(errMsg, "connection") || strings.Contains(errMsg, "network"):
-					failedURL.ErrorType = "network_error"
-				case failedURL.StatusCode >= 400:
-					failedURL.ErrorType = "http_error"
-				default:
-					failedURL.ErrorType = "unknown_error"
-				}
-			}
-
-			failed = append(failed, failedURL)
-		}
-	}
-
-	return failed
-}
-
-// writeFailedURLsToSession writes failed URLs to failed-urls.yaml in the session directory.
-func writeFailedURLsToSession(failed []FailedURL, sessionDir string) error {
-	if len(failed) == 0 {
-		return nil // No failures, skip writing file
-	}
-
-	failedURLs := FailedURLs{
-		FailedURLs: failed,
-	}
-
-	outputPath := filepath.Join(sessionDir, "failed-urls.yaml")
-
-	yamlBytes, err := yaml.Marshal(&failedURLs)
-	if err != nil {
-		return fmt.Errorf("failed to marshal failed URLs to YAML: %w", err)
-	}
-
-	if err := os.WriteFile(outputPath, yamlBytes, 0600); err != nil {
-		return fmt.Errorf("failed to write failed URLs file: %w", err)
-	}
-
-	return nil
-}
-

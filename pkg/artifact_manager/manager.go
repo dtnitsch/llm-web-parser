@@ -13,10 +13,26 @@ import (
 )
 
 const (
-	DefaultBaseDir = "llm-web-parser-results"
-	RawHTMLDir     = "raw"
-	ParsedJSONDir  = "parsed"
+	DefaultBaseDir = "lwp-results"
+	SessionsDir    = "lwp-sessions" // Separate from results
+	RawHTMLDir     = "raw"           // Legacy, will be deprecated
+	ParsedJSONDir  = "parsed"        // Legacy, will be deprecated
 )
+
+// GetURLDir returns the directory for a specific URL ID (URL-centric structure).
+// Example: lwp-results/42/
+func GetURLDir(baseDir string, urlID int64) string {
+	if baseDir == "" {
+		baseDir = DefaultBaseDir
+	}
+	return filepath.Join(baseDir, fmt.Sprintf("%d", urlID))
+}
+
+// GetURLArtifactPath returns the full path for a specific artifact.
+// Example: lwp-results/42/raw.html
+func GetURLArtifactPath(baseDir string, urlID int64, artifact string) string {
+	return filepath.Join(GetURLDir(baseDir, urlID), artifact)
+}
 
 // Manager handles storage and retrieval of web artifacts.
 type Manager struct {
@@ -200,4 +216,92 @@ func (m *Manager) SetParsedJSON(url string, data []byte) error {
 // MaxAge returns the configured max age for artifacts.
 func (m *Manager) MaxAge() time.Duration {
     return m.maxAge
+}
+
+// ===== NEW URL-ID-BASED METHODS =====
+
+// EnsureURLDir ensures the directory for a URL ID exists.
+// Creates lwp-results/{url_id}/ if it doesn't exist.
+func (m *Manager) EnsureURLDir(urlID int64) error {
+	urlDir := GetURLDir(m.baseDir, urlID)
+	if err := os.MkdirAll(urlDir, 0750); err != nil {
+		return fmt.Errorf("failed to create URL directory: %w", err)
+	}
+	return nil
+}
+
+// GetRawHTMLByID retrieves raw HTML from URL-centric storage.
+// Reads from lwp-results/{url_id}/raw.html
+func (m *Manager) GetRawHTMLByID(urlID int64) ([]byte, bool, error) {
+	filePath := GetURLArtifactPath(m.baseDir, urlID, "raw.html")
+
+	info, err := os.Stat(filePath)
+	if os.IsNotExist(err) {
+		return nil, false, nil // Not found
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("error statting raw HTML: %w", err)
+	}
+
+	if m.maxAge > 0 && time.Since(info.ModTime()) > m.maxAge {
+		return nil, false, nil // Stale
+	}
+
+	data, err := os.ReadFile(filepath.Clean(filePath))
+	if err != nil {
+		return nil, false, fmt.Errorf("error reading raw HTML: %w", err)
+	}
+	return data, true, nil
+}
+
+// SetRawHTMLByID stores raw HTML in URL-centric storage.
+// Writes to lwp-results/{url_id}/raw.html
+func (m *Manager) SetRawHTMLByID(urlID int64, data []byte) error {
+	if err := m.EnsureURLDir(urlID); err != nil {
+		return err
+	}
+
+	filePath := GetURLArtifactPath(m.baseDir, urlID, "raw.html")
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write raw HTML: %w", err)
+	}
+	return nil
+}
+
+// GetParsedJSONByID retrieves parsed JSON from URL-centric storage.
+// Reads from lwp-results/{url_id}/generic.yaml
+func (m *Manager) GetParsedJSONByID(urlID int64) ([]byte, bool, error) {
+	filePath := GetURLArtifactPath(m.baseDir, urlID, "generic.yaml")
+
+	info, err := os.Stat(filePath)
+	if os.IsNotExist(err) {
+		return nil, false, nil // Not found
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("error statting parsed YAML: %w", err)
+	}
+
+	if m.maxAge > 0 && time.Since(info.ModTime()) > m.maxAge {
+		return nil, false, nil // Stale
+	}
+
+	data, err := os.ReadFile(filepath.Clean(filePath))
+	if err != nil {
+		return nil, false, fmt.Errorf("error reading parsed YAML: %w", err)
+	}
+	return data, true, nil
+}
+
+// SetParsedYAMLByID stores parsed YAML in URL-centric storage.
+// Writes to lwp-results/{url_id}/generic.yaml
+func (m *Manager) SetParsedYAMLByID(urlID int64, data []byte) error {
+	if err := m.EnsureURLDir(urlID); err != nil {
+		return err
+	}
+
+	filePath := GetURLArtifactPath(m.baseDir, urlID, "generic.yaml")
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write parsed YAML: %w", err)
+	}
+	return nil
 }

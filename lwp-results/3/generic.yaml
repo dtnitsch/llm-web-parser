@@ -1,0 +1,640 @@
+url: https://go.dev/blog/intro-generics
+title: An Introduction To Generics - The Go Programming Language
+content: []
+flatcontent:
+    - id: block-1
+      type: h2
+      text: Introduction
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-2
+      type: p
+      text: 'This blog post is based on our talk at GopherCon 2021:'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-3
+      type: p
+      text: The Go 1.18 release adds support for generics. Generics are the biggest change we’ve made to Go since the first open source release. In this article we’ll introduce the new language features. We won’t try to cover all the details, but we will hit all the important points. For a more detailed and much longer description, including many examples, see the proposal document. For a more precise description of the language changes, see the updated language spec. (Note that the actual 1.18 implementation imposes some restrictions on what the proposal document permits; the spec should be accurate. Future releases may lift some of the restrictions.)
+      table: null
+      code: null
+      links:
+        - href: https://go.googlesource.com/proposal/+/HEAD/design/43651-type-parameters.md
+          text: proposal document
+          type: external
+        - href: https://go.dev/ref/spec
+          text: updated language spec
+          type: internal
+      confidence: 0.5
+    - id: block-4
+      type: p
+      text: Generics are a way of writing code that is independent of the specific types being used. Functions and types may now be written to use any of a set of types.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-5
+      type: p
+      text: 'Generics add three new big things to the language:'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-6
+      type: h2
+      text: Type Parameters
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-7
+      type: p
+      text: Functions and types are now permitted to have type parameters. A type parameter list looks like an ordinary parameter list, except that it uses square brackets instead of parentheses.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-8
+      type: p
+      text: 'To show how this works, let’s start with the basic non-generic Min function for floating point values:'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-9
+      type: pre
+      text: func Min(x, y float64) float64 { if x < y { return x } return y }
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-10
+      type: p
+      text: We can make this function generic–make it work for different types–by adding a type parameter list. In this example we add a type parameter list with a single type parameter T, and replace the uses of float64 with T.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-11
+      type: pre
+      text: import "golang.org/x/exp/constraints" func GMin[T constraints.Ordered](x, y T) T { if x < y { return x } return y }
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-12
+      type: p
+      text: It is now possible to call this function with a type argument by writing a call like
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-13
+      type: pre
+      text: x := GMin[int](2, 3)
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-14
+      type: p
+      text: Providing the type argument to GMin, in this case int, is called instantiation. Instantiation happens in two steps. First, the compiler substitutes all type arguments for their respective type parameters throughout the generic function or type. Second, the compiler verifies that each type argument satisfies the respective constraint. We’ll get to what that means shortly, but if that second step fails, instantiation fails and the program is invalid.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-15
+      type: p
+      text: After successful instantiation we have a non-generic function that can be called just like any other function. For example, in code like
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-16
+      type: pre
+      text: fmin := GMin[float64] m := fmin(2.71, 3.14)
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-17
+      type: p
+      text: the instantiation GMin[float64] produces what is effectively our original floating-point Min function, and we can use that in a function call.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-18
+      type: p
+      text: Type parameters can be used with types also.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-19
+      type: pre
+      text: type Tree[T interface{}] struct { left, right *Tree[T] value       T } func (t *Tree[T]) Lookup(x T) *Tree[T] { ... } var stringTree Tree[string]
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-20
+      type: p
+      text: Here the generic type Tree stores values of the type parameter T. Generic types can have methods, like Lookup in this example. In order to use a generic type, it must be instantiated; Tree[string] is an example of instantiating Tree with the type argument string.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-21
+      type: h2
+      text: Type sets
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-22
+      type: p
+      text: Let’s look a bit deeper at the type arguments that can be used to instantiate a type parameter.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-23
+      type: p
+      text: An ordinary function has a type for each value parameter; that type defines a set of values. For instance, if we have a float64 type as in the non-generic function Min above, the permissible set of argument values is the set of floating-point values that can be represented by the float64 type.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-24
+      type: p
+      text: Similarly, type parameter lists have a type for each type parameter. Because a type parameter is itself a type, the types of type parameters define sets of types. This meta-type is called a type constraint.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-25
+      type: p
+      text: In the generic GMin, the type constraint is imported from the constraints package. The Ordered constraint describes the set of all types with values that can be ordered, or, in other words, compared with the  < operator (or  <= ,  > , etc.). The constraint ensures that only types with orderable values can be passed to GMin. It also means that in the GMin function body values of that type parameter can be used in a comparison with the  <  operator.
+      table: null
+      code: null
+      links:
+        - href: https://golang.org/x/exp/constraints
+          text: constraints package
+          type: external
+      confidence: 0.5
+    - id: block-26
+      type: p
+      text: In Go, type constraints must be interfaces. That is, an interface type can be used as a value type, and it can also be used as a meta-type. Interfaces define methods, so obviously we can express type constraints that require certain methods to be present. But constraints.Ordered is an interface type too, and the  < operator is not a method.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-27
+      type: p
+      text: To make this work, we look at interfaces in a new way.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-28
+      type: p
+      text: Until recently, the Go spec said that an interface defines a method set, which is roughly the set of methods enumerated in the interface. Any type that implements all those methods implements that interface.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-29
+      type: p
+      text: But another way of looking at this is to say that the interface defines a set of types, namely the types that implement those methods. From this perspective, any type that is an element of the interface’s type set implements the interface.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-30
+      type: p
+      text: 'The two views lead to the same outcome: For each set of methods we can imagine the corresponding set of types that implement those methods, and that is the set of types defined by the interface.'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-31
+      type: p
+      text: 'For our purposes, though, the type set view has an advantage over the method set view: we can explicitly add types to the set, and thus control the type set in new ways.'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-32
+      type: p
+      text: We have extended the syntax for interface types to make this work. For instance, interface{ int|string|bool } defines the type set containing the types int, string, and bool.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-33
+      type: p
+      text: Another way of saying this is that this interface is satisfied by only int, string, or bool.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-34
+      type: p
+      text: 'Now let’s look at the actual definition of constraints.Ordered:'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-35
+      type: pre
+      text: type Ordered interface { Integer|Float|~string }
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-36
+      type: p
+      text: This declaration says that the Ordered interface is the set of all integer, floating-point, and string types. The vertical bar expresses a union of types (or sets of types in this case). Integer and Float are interface types that are similarly defined in the constraints package. Note that there are no methods defined by the Ordered interface.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-37
+      type: p
+      text: For type constraints we usually don’t care about a specific type, such as string; we are interested in all string types. That is what the ~ token is for. The expression ~string means the set of all types whose underlying type is string. This includes the type string itself as well as all types declared with definitions such as type MyString string.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-38
+      type: p
+      text: Of course we still want to specify methods in interfaces, and we want to be backward compatible. In Go 1.18 an interface may contain methods and embedded interfaces just as before, but it may also embed non-interface types, unions, and sets of underlying types.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-39
+      type: p
+      text: When used as a type constraint, the type set defined by an interface specifies exactly the types that are permitted as type arguments for the respective type parameter. Within a generic function body, if the type of a operand is a type parameter P with constraint C, operations are permitted if they are permitted by all types in the type set of C (there are currently some implementation restrictions here, but ordinary code is unlikely to encounter them).
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-40
+      type: p
+      text: 'Interfaces used as constraints may be given names (such as Ordered), or they may be literal interfaces inlined in a type parameter list. For example:'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-41
+      type: pre
+      text: '[S interface{~[]E}, E interface{}]'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-42
+      type: p
+      text: Here S must be a slice type whose element type can be any type.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-43
+      type: p
+      text: 'Because this is a common case, the enclosing interface{} may be omitted for interfaces in constraint position, and we can simply write:'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-44
+      type: pre
+      text: '[S ~[]E, E interface{}]'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-45
+      type: p
+      text: 'Because the empty interface is common in type parameter lists, and in ordinary Go code for that matter, Go 1.18 introduces a new predeclared identifier any as an alias for the empty interface type. With that, we arrive at this idiomatic code:'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-46
+      type: pre
+      text: '[S ~[]E, E any]'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-47
+      type: p
+      text: Interfaces as type sets is a powerful new mechanism and is key to making type constraints work in Go. For now, interfaces that use the new syntactic forms may only be used as constraints. But it’s not hard to imagine how explicitly type-constrained interfaces might be useful in general.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-48
+      type: h2
+      text: Type inference
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-49
+      type: p
+      text: The last new major language feature is type inference. In some ways this is the most complicated change to the language, but it is important because it lets people use a natural style when writing code that calls generic functions.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-50
+      type: h3
+      text: Function argument type inference
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-51
+      type: p
+      text: 'With type parameters comes the need to pass type arguments, which can make for verbose code. Going back to our generic GMin function:'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-52
+      type: pre
+      text: func GMin[T constraints.Ordered](x, y T) T { ... }
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-53
+      type: p
+      text: the type parameter T is used to specify the types of the ordinary non-type arguments x, and y. As we saw earlier, this can be called with an explicit type argument
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-54
+      type: pre
+      text: var a, b, m float64 m = GMin[float64](a, b) // explicit type argument
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-55
+      type: p
+      text: In many cases the compiler can infer the type argument for T from the ordinary arguments. This makes the code shorter while remaining clear.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-56
+      type: pre
+      text: var a, b, m float64 m = GMin(a, b) // no type argument
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-57
+      type: p
+      text: This works by matching the types of the arguments a and b with the types of the parameters x, and y.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-58
+      type: p
+      text: This kind of inference, which infers the type arguments from the types of the arguments to the function, is called function argument type inference.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-59
+      type: p
+      text: Function argument type inference only works for type parameters that are used in the function parameters, not for type parameters used only in function results or only in the function body. For example, it does not apply to functions like MakeT[T any]() T, that only uses T for a result.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-60
+      type: h3
+      text: Constraint type inference
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-61
+      type: p
+      text: 'The language supports another kind of type inference, constraint type inference. To describe this, let’s start with this example of scaling a slice of integers:'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-62
+      type: pre
+      text: // Scale returns a copy of s with each element multiplied by c. // This implementation has a problem, as we will see. func Scale[E constraints.Integer](s []E, c E) []E { r := make([]E, len(s)) for i, v := range s { r[i] = v * c } return r }
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-63
+      type: p
+      text: This is a generic function that works for a slice of any integer type.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-64
+      type: p
+      text: Now suppose that we have a multi-dimensional Point type, where each Point is simply a list of integers giving the coordinates of the point. Naturally this type will have some methods.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-65
+      type: pre
+      text: type Point []int32 func (p Point) String() string { // Details not important. }
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-66
+      type: p
+      text: 'Sometimes we want to scale a Point. Since a Point is just a slice of integers, we can use the Scale function we wrote earlier:'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-67
+      type: pre
+      text: // ScaleAndPrint doubles a Point and prints it. func ScaleAndPrint(p Point) { r := Scale(p, 2) fmt.Println(r.String()) // DOES NOT COMPILE }
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-68
+      type: p
+      text: Unfortunately this does not compile, failing with an error like r.String undefined (type []int32 has no field or method String).
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-69
+      type: p
+      text: The problem is that the Scale function returns a value of type []E where E is the element type of the argument slice. When we call Scale with a value of type Point, whose underlying type is []int32, we get back a value of type []int32, not type Point. This follows from the way that the generic code is written, but it’s not what we want.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-70
+      type: p
+      text: In order to fix this, we have to change the Scale function to use a type parameter for the slice type.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-71
+      type: pre
+      text: // Scale returns a copy of s with each element multiplied by c. func Scale[S ~[]E, E constraints.Integer](s S, c E) S { r := make(S, len(s)) for i, v := range s { r[i] = v * c } return r }
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-72
+      type: p
+      text: 'We’ve introduced a new type parameter S that is the type of the slice argument. We’ve constrained it such that the underlying type is S rather than []E, and the result type is now S. Since E is constrained to be an integer, the effect is the same as before: the first argument has to be a slice of some integer type. The only change to the body of the function is that now we pass S, rather than []E, when we call make.'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-73
+      type: p
+      text: The new function acts the same as before if we call it with a plain slice, but if we call it with the type Point we now get back a value of type Point. That is what we want. With this version of Scale the earlier ScaleAndPrint function will compile and run as we expect.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-74
+      type: p
+      text: 'But it’s fair to ask: why is it OK to write the call to Scale without passing explicit type arguments? That is, why can we write Scale(p, 2), with no type arguments, rather than having to write Scale[Point, int32](p, 2)? Our new Scale function has two type parameters, S and E. In a call to Scale not passing any type arguments, function argument type inference, described above, lets the compiler infer that the type argument for S is Point. But the function also has a type parameter E which is the type of the multiplication factor c. The corresponding function argument is 2, and because 2 is an untyped constant, function argument type inference cannot infer the correct type for E (at best it might infer the default type for 2 which is int and which would be incorrect). Instead, the process by which the compiler infers that the type argument for E is the element type of the slice is called constraint type inference.'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-75
+      type: p
+      text: Constraint type inference deduces type arguments from type parameter constraints. It is used when one type parameter has a constraint defined in terms of another type parameter. When the type argument of one of those type parameters is known, the constraint is used to infer the type argument of the other.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-76
+      type: p
+      text: The usual case where this applies is when one constraint uses the form ~type for some type, where that type is written using other type parameters. We see this in the Scale example. S is ~[]E, which is ~ followed by a type []E written in terms of another type parameter. If we know the type argument for S we can infer the type argument for E. S is a slice type, and E is the element type of that slice.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-77
+      type: p
+      text: This was just an introduction to constraint type inference. For full details see the proposal document or the language spec.
+      table: null
+      code: null
+      links:
+        - href: https://go.googlesource.com/proposal/+/HEAD/design/43651-type-parameters.md
+          text: proposal document
+          type: external
+        - href: https://go.dev/ref/spec
+          text: language spec
+          type: internal
+      confidence: 0.5
+    - id: block-78
+      type: h3
+      text: Type inference in practice
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-79
+      type: p
+      text: 'The exact details of how type inference works are complicated, but using it is not: type inference either succeeds or fails. If it succeeds, type arguments can be omitted, and calling generic functions looks no different than calling ordinary functions. If type inference fails, the compiler will give an error message, and in those cases we can just provide the necessary type arguments.'
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-80
+      type: p
+      text: In adding type inference to the language we’ve tried to strike a balance between inference power and complexity. We want to ensure that when the compiler infers types, those types are never surprising. We’ve tried to be careful to err on the side of failing to infer a type rather than on the side of inferring the wrong type. We probably have not gotten it entirely right, and we may continue to refine it in future releases. The effect will be that more programs can be written without explicit type arguments. Programs that don’t need type arguments today won’t need them tomorrow either.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-81
+      type: h2
+      text: Conclusion
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-82
+      type: p
+      text: Generics are a big new language feature in 1.18. These new language changes required a large amount of new code that has not had significant testing in production settings. That will only happen as more people write and use generic code. We believe that this feature is well implemented and high quality. However, unlike most aspects of Go, we can’t back up that belief with real world experience. Therefore, while we encourage the use of generics where it makes sense, please use appropriate caution when deploying generic code in production.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+    - id: block-83
+      type: p
+      text: That caution aside, we’re excited to have generics available, and we hope that they will make Go programmers more productive.
+      table: null
+      code: null
+      links: []
+      confidence: 0.5
+metadata:
+    contenttype: docs
+    contentsubtype: general-docs
+    language: en
+    languageconfidence: 0.95
+    wordcount: 2692
+    estimatedreadmin: 12
+    sectioncount: 0
+    blockcount: 83
+    hasinfobox: false
+    hastoc: false
+    hascodeexamples: true
+    citationcount: 0
+    codeblockcount: 146
+    computed: true
+    extractionmode: cheap
+    extractionquality: ok
+    author: Robert Griesemer and Ian Lance Taylor 22 March 2022
+    excerpt: An introduction to generics in Go.
+    sitename: ""
+    publishedtime: ""
+    favicon: https://go.dev/images/favicon-gopher.png
+    image: https://go.dev/doc/gopher/gopher5logo.jpg
+    domaintype: commercial
+    domaincategory: blog
+    country: unknown
+    confidence: 5.5
+    hasdoi: false
+    doipattern: ""
+    hasarxiv: false
+    arxivid: ""
+    haslatex: false
+    hascitations: false
+    hasreferences: false
+    hasabstract: false
+    academicscore: 0
+    statuscode: 0
+    httpcontenttype: ""
+    finalurl: ""
+    redirectchain: []

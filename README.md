@@ -1,478 +1,363 @@
-# LLM Web Parser
+# llm-web-parser
 
-**Fast, parallel web scraper that returns structured data (YAML/JSON) optimized for LLM consumption**
+**Fast, LLM-optimized web content extraction with intelligent caching and session tracking.**
 
-Parse 40 URLs in 4 seconds. Get hierarchical sections, confidence scores, and keyword extraction—not raw HTML bloat.
+Extract clean metadata from web pages in minimal mode (fast) or full content with confidence scoring (thorough). Built for LLM workflows with token-efficient YAML output and smart session management.
 
-```bash
-# Fetch 100 competitor pages in parallel, extract structured content
-go run main.go
-# → results/competitor_com-features-2025-12-30.json (1.2k tokens vs 15k raw HTML)
-```
+## Features
 
-**Performance:** 40 URLs in 4.6s (vs 140s serial) | **Token Savings:** 97% (summary mode) | **Quality:** Auto-escalates cheap → full parsing
-
----
-
-## Why Use This?
-
-LLM web scraping is broken:
-
-| Problem | LLM Web Parser Solution |
-|---------|------------------------|
-| **Serial fetching:** 100 URLs = 100 round trips | **Parallel workers:** 40 URLs in 4.6s (8 workers) |
-| **HTML bloat:** 2000 tokens/page of markup | **Structured JSON:** Hierarchical sections, typed blocks |
-| **No quality signals:** Can't filter nav spam | **Confidence scores:** 0.95 for tables/code, 0.3 for nav |
-| **Manual parsing:** LLMs re-parse structure each time | **Smart modes:** Auto-escalates cheap → full when needed |
-
-**Result:** 97% token savings, 30x faster, zero prompt engineering needed for structure extraction
-
----
+- **Zero-config setup** - Auto-initializes database, just run it
+- **Fast minimal mode** - Extract metadata only (~150 bytes/URL, 2-5 seconds for 50 URLs)
+- **Full-parse mode** - Deep content extraction with confidence scores
+- **Session tracking** - SQLite-backed sessions with auto-incrementing IDs
+- **URL ID system** - Reference URLs by ID to save tokens (90% reduction)
+- **Smart caching** - Instant cache hits for duplicate URL sets
+- **Parallel processing** - 8 concurrent workers by default
+- **URL sanitization** - Auto-cleans markdown links, whitespace, trailing punctuation
+- **Flexible refetch** - Refetch sessions with different modes or retry failures
 
 ## Quick Start
 
 ```bash
-# 1. Clone and build
-git clone https://github.com/dtnitsch/llm-web-parser.git
-cd llm-web-parser
-go build .
+# Build
+go build
 
-# 2. Fetch and parse URLs (outputs tier2 YAML by default)
-./llm-web-parser fetch --urls "https://docs.python.org/3/library/asyncio.html,https://fastapi.tiangolo.com"
+# Fetch URLs (auto-creates database)
+./llm-web-parser fetch --urls "https://golang.org,https://www.python.org"
 
-# 3. Check results
-ls llm-web-parser-results/parsed/
-# docs_python_org-3-library-asyncio_html-abc123.json
-# fastapi_tiangolo_com-def456.json
-# summary-details-2026-01-10.yaml (← detailed metadata for all URLs)
+# View results (defaults to latest session)
+./llm-web-parser db get --file=details
+
+# See URL IDs for easy reference
+./llm-web-parser db urls
+
+# Get content by ID (saves tokens!)
+./llm-web-parser db show 1
 ```
 
-**Pro tip:** The tier2 YAML index (stdout) shows scannable metadata. The `summary-details-*.yaml` file has full metadata for all URLs including enriched detection.
+**That's it!** No configuration needed. Database and results auto-initialize.
 
----
+## Core Workflows
 
-## Common & Useful Commands
-
-### Working with Parsed JSON
+### 1. Fast Scan → Deep Dive (Recommended for LLMs)
 
 ```bash
-# Get all page titles
-jq -r '.title' llm-web-parser-results/parsed/*.json
+# Stage 1: Fast minimal scan (metadata only)
+llm-web-parser fetch --urls "url1,url2,...,url50"
+# Output: Session 1: 48/50 URLs successful (2-5 seconds)
 
-# Count high-confidence blocks per file
-jq '[.content[].blocks[] | select(.confidence >= 0.7)] | length' file.json
+# Stage 2: Analyze confidence scores
+llm-web-parser db get --file=details | yq '.[] | select(.confidence >= 7)'
 
-# Extract high-confidence paragraphs (200 char preview)
-jq -r '.content[].blocks[] | select(.confidence >= 0.8 and .type == "p") | .text[:200]' file.json
-
-# Find all code blocks across files
-jq -r '.content[].blocks[] | select(.type == "code") | .code.content' llm-web-parser-results/parsed/*.json
-
-# Get metadata summary across all files
-jq -s 'map({url, tokens: .metadata.estimated_tokens, quality: .metadata.extraction_quality})' llm-web-parser-results/parsed/*.json
+# Stage 3: Deep parse high-confidence URLs
+llm-web-parser fetch --session 1 --features full-parse
+# Refetches same URLs with full content extraction
 ```
 
-### Using the Extract Command (Token Savings!)
+### 2. Retry Failed URLs
 
 ```bash
-# Get only high-confidence content (save 50-80% tokens)
-./llm-web-parser extract --from 'llm-web-parser-results/parsed/*.json' --strategy="conf:>=0.7"
+# Some URLs failed during fetch
+llm-web-parser fetch --urls "url1,bad-url,url3"
+# Session 2: 2/3 URLs successful
 
-# Get only code blocks
-./llm-web-parser extract --from 'llm-web-parser-results/parsed/*.json' --strategy="type:code"
-
-# Combined: high-confidence paragraphs only
-./llm-web-parser extract --from 'llm-web-parser-results/parsed/*.json' --strategy="conf:>=0.8,type:p"
+# Retry only the failures
+llm-web-parser fetch --session 2 --failed-only
+# Retrying 1 failed URLs from session 2
 ```
 
-### Default Output: Tier2 YAML with Smart Detection
-
-Two-tier summary system with automatic domain/academic detection - perfect for research!
+### 3. Use URL IDs to Save Tokens
 
 ```bash
-# Default: Tier2 YAML output - index (stdout) + details (file)
-./llm-web-parser fetch --urls "https://cdc.gov,https://arxiv.org,https://github.com,https://docs.python.org"
+# Get URL IDs from latest session
+llm-web-parser db urls
+# Output:
+# Session: 5
+#  1. [#42] https://golang.org
+#  2. [#43] https://www.python.org
 
-# Output: Summary index (YAML to stdout) with smart categorization
-# - url, category, confidence (0-10), title, description, tokens
-# - Only successful fetches
-# - ~150 bytes/URL (vs 400+ bytes in regular summary)
-#
-# File created: llm-web-parser-results/summary-details-YYYY-MM-DD.yaml
-# - All URLs (including failures)
-# - Full enriched metadata
-# - ~400 bytes/URL
-
-# Filter by confidence >= 7.0 (high-quality sources)
-./llm-web-parser fetch --urls "..." | yq '.[] | select(.conf >= 7.0)'
-
-# Filter by category (find all government/health sites)
-./llm-web-parser fetch --urls "..." | yq '.[] | select(.cat == "gov/health")'
-
-# Find large documents (>500 tokens)
-./llm-web-parser fetch --urls "..." | yq '.[] | select(.tokens > 500) | .url'
-
-# View detailed metadata for specific URL
-yq '.[] | select(.url == "https://arxiv.org")' llm-web-parser-results/summary-details-YYYY-MM-DD.yaml
+# Reference by ID instead of full URL (10 tokens → 1 token)
+llm-web-parser db show 42        # Instead of full URL
+llm-web-parser db raw 43         # Get raw HTML
+llm-web-parser db show 42,43     # Batch retrieve
 ```
 
-**Smart Detection (zero API cost!):**
-- Domain type: `gov`, `edu`, `academic`, `commercial`, `mobile`
-- Categories: `gov/health`, `academic/ai`, `news/tech`, `docs/api`, `blog`
-- Academic signals: DOI, ArXiv IDs, LaTeX, citations
-- Country detection from TLD
-- Author, published date, site name extraction
+## Session System
 
-**Scaling:** 100 URLs = ~15KB index + ~40KB details (vs ~470KB full parse)
+Sessions track every fetch operation with auto-incrementing IDs (1, 2, 3...).
 
-### Multi-Stage Workflow: Fetch Minimal → Analyze Selected
+**Key behaviors:**
+- Same URLs = same session ID = instant cache hit (no re-fetching)
+- Session directories: `sessions/2026-01-15-1` (date + ID)
+- Sessions stored in SQLite database + YAML files on disk
+- Commands default to latest session (no ID needed)
 
-**NEW (v1.0):** Default mode is now **minimal** (metadata only, no content parsing) for 2-3x faster fetching!
+**Structure:**
+```
+llm-web-parser-results/
+├── FIELDS.yaml                    # Field reference with query examples
+├── index.yaml                     # All sessions registry
+├── llm-web-parser.db              # SQLite database (auto-created)
+├── sessions/
+│   └── 2026-01-15-1/              # Session directory
+│       ├── summary-index.yaml     # Minimal data (~150 bytes/URL)
+│       ├── summary-details.yaml   # Full metadata (~400 bytes/URL)
+│       └── failed-urls.yaml       # Failed URLs (if any)
+├── raw/                           # Shared HTML cache
+└── parsed/                        # Shared JSON cache
+```
+
+## Common Commands
+
+### Fetching
 
 ```bash
-# Step 1: Fetch 100 URLs in minimal mode (DEFAULT - very fast, outputs tier2 YAML)
-./llm-web-parser fetch --urls "url1,url2,...,url100" > index.yaml
-# Output: Minimal index with domain types, categories, confidence scores
-# Speed: ~2-3 seconds for 100 URLs
+# Basic fetch
+llm-web-parser fetch --urls "url1,url2,url3"
 
-# Step 2: Scan index, filter by criteria
-yq '.[] | select(.conf >= 7.0 and .cat == "academic/ai")' index.yaml
-# LLM decides: "URLs 5, 12, and 47 look interesting"
+# Full parse mode
+llm-web-parser fetch --urls "url1,url2" --features full-parse
 
-# Step 3: Deep-dive analysis on selected URLs from cache
-./llm-web-parser analyze --urls "url5,url12,url47" --features full-parse
-# Output: Full hierarchical parsing for only the 3 selected URLs
-# Speed: ~0.5 seconds
+# Refetch session with different mode
+llm-web-parser fetch --session 5 --features full-parse
 
-# Total: 3.5s vs 15s to parse all 100 URLs upfront!
+# Retry failures
+llm-web-parser fetch --session 5 --failed-only
+
+# Force fresh fetch (ignore cache)
+llm-web-parser fetch --session 5 --force-fetch
 ```
 
-**When to use full-parse upfront:**
-```bash
-# For small batches (<20 URLs) or when you know you need all content
-./llm-web-parser fetch --urls "..." --features full-parse
-```
-
-**Performance comparison (100 URLs):**
-- Minimal mode: 2-3s total (fetch all)
-- Selective analysis: +0.5s (analyze 5 URLs)
-- **Total: 3.5s vs 15s full-parse**
-
-### Fetch Command Options
+### Session Management
 
 ```bash
-# Default: quiet mode + tier2 YAML output
-./llm-web-parser fetch --urls "https://example.com"
+# List all sessions
+llm-web-parser db sessions
 
-# Verbose logging (show all info/debug messages)
-./llm-web-parser fetch --urls "https://example.com" --quiet=false
+# Show latest session details
+llm-web-parser db session
 
-# Force refetch (ignore cache)
-./llm-web-parser fetch --urls "https://example.com" --force-fetch
+# Show specific session
+llm-web-parser db session 5
 
-# Adjust cache age
-./llm-web-parser fetch --urls "https://example.com" --max-age "24h"
+# Get session YAML (latest)
+llm-web-parser db get --file=details
+llm-web-parser db get --file=index
+llm-web-parser db get --file=failed
 
-# Use legacy summary mode (JSON to stdout)
-./llm-web-parser fetch --urls "https://example.com" --output-mode summary
+# Get specific session
+llm-web-parser db get --file=details 5
 
-# Use JSON format instead of YAML
-./llm-web-parser fetch --urls "https://example.com" --format json
+# Show URLs with IDs (latest session)
+llm-web-parser db urls
+
+# Show only sanitized URLs
+llm-web-parser db urls --sanitized
 ```
 
----
+### URL Operations
 
-## Performance Benchmarks
+```bash
+# Show parsed content by URL ID
+llm-web-parser db show 42
 
-**Test:** 40 ML research URLs (Wikipedia, Keras, PyTorch, HuggingFace, etc.)
-**Hardware:** MacBook M4, 24GB RAM (with Ollama + Docker running)
+# Show raw HTML by URL ID
+llm-web-parser db raw 42
 
-| Metric | 4 Workers (default) | 8 Workers | Serial (baseline) |
-|--------|---------------------|-----------|-------------------|
-| **Total time** | 5.053s | 4.594s | 140s |
-| **Avg/URL** | 0.136s | 0.123s | 3.5s |
-| **Speedup** | 27.7x | 30.5x | 1x |
-| **Success rate** | 37/40 (92.5%) | 37/40 (92.5%) | N/A |
+# Batch retrieve
+llm-web-parser db show 42,43,44
 
-**Token savings:** 100x with summary mode (7.4k tokens vs 740k for full files)
-
-**Keywords accuracy:** 99.8% match between aggregate counts (MapReduce working correctly across workers)
-
-**Real-world use case:** Analyzed 38 GitHub repo READMEs in 4.6 seconds vs ~2 minutes serial fetch + manual parsing
-
----
-
-## Output Format
-
-### Summary Manifest (Start Here)
-
-```json
-{
-  "generated_at": "2025-12-30T12:01:01-05:00",
-  "total_urls": 40,
-  "successful": 37,
-  "failed": 3,
-  "aggregate_keywords": ["learning:1153", "ai:571", "neural:542"],
-  "results": [
-    {
-      "url": "https://example.com",
-      "file_path": "results/example_com-2025-12-30.json",
-      "status": "success",
-      "size_bytes": 29765,
-      "word_count": 819,
-      "estimated_tokens": 327,
-      "extraction_quality": "ok",
-      "top_keywords": ["neural:23", "networks:16", "learning:7"]
-    }
-  ]
-}
+# Find URL ID for a URL
+llm-web-parser db find-url https://golang.org
+# Output: [#42] https://golang.org
 ```
 
-**Use summary for:**
-- Quick scan of what succeeded/failed
-- Token cost estimation (word_count / 2.5)
-- Keyword-based filtering ("which pages mention 'API authentication'?")
-- Selective deep-dive (only read high-value pages)
+### Querying
 
-### Hierarchical Page Structure
+```bash
+# Query sessions
+llm-web-parser db query --today
+llm-web-parser db query --failed
+llm-web-parser db query --url=example.com
 
-```json
-{
-  "url": "https://example.com",
-  "title": "Example - The Best Product",
-  "content": [
-    {
-      "id": "section-1",
-      "heading": {
-        "type": "h2",
-        "text": "Features",
-        "confidence": 0.7
-      },
-      "level": 2,
-      "blocks": [
-        {
-          "id": "block-1",
-          "type": "p",
-          "text": "Our product offers 99.9% uptime SLA...",
-          "links": [
-            {
-              "href": "/pricing",
-              "text": "See pricing",
-              "type": "internal"
-            }
-          ],
-          "confidence": 0.85
-        }
-      ],
-      "children": []
-    }
-  ],
-  "metadata": {
-    "content_type": "landing",
-    "language": "en",
-    "language_confidence": 0.9,
-    "word_count": 1245,
-    "estimated_read_min": 5.5,
-    "section_count": 8,
-    "block_count": 42,
-    "extraction_mode": "full",
-    "extraction_quality": "ok"
-  }
-}
+# Query YAML results with yq
+llm-web-parser db get --file=details | yq '.[] | select(.confidence >= 7)'
+llm-web-parser db get --file=details | yq '.[] | select(.domain_type == "academic")'
+llm-web-parser db get --file=details | yq '.[] | select(.has_doi and .academic_score >= 7)'
 ```
 
-### What You Get
+## Parse Modes
 
-| Feature | Value | Use Case |
-|---------|-------|----------|
-| **Hierarchical sections** | H1 → H2 → H3 nesting | Query "all H2 sections" without re-parsing |
-| **Confidence scores** | 0.95 (code/tables) → 0.30 (nav spam) | Filter low-signal content |
-| **Link classification** | `internal` vs `external` | Depth-first crawling, citation extraction |
-| **Content type** | `documentation`, `article`, `landing` | Adjust prompts per page type |
-| **Language detection** | Language + confidence score | Skip non-English content |
-| **Extraction quality** | `ok` / `low` / `degraded` | Auto-retry with full mode |
-| **Token estimation** | `word_count / 2.5` | Budget LLM costs before reading |
-| **Top keywords** | Per-URL + aggregate | Filter pages by topic |
+### Minimal Mode (Default)
+**Fast metadata extraction** - ~150 bytes/URL, perfect for initial scans
 
----
+Fields extracted:
+- `title`, `excerpt`, `site_name`, `author`, `published_at`
+- `domain_type` (gov, edu, academic, commercial, mobile, unknown)
+- `domain_category` (gov/health, academic/ai, news/tech, docs/api, etc.)
+- `confidence` (0-10 quality/credibility score)
+- `academic_score` (0-10 academic signal strength)
+- Academic signals: `has_doi`, `has_arxiv`, `has_latex`, `has_citations`, etc.
+- Content metrics: `word_count`, `estimated_tokens`, `read_time_min`
+- Language: `language`, `language_confidence`
 
-## Architecture
+### Full-Parse Mode
+**Complete content extraction** with confidence scoring
 
-### How It Works
+Additional extraction:
+- Full text content blocks with confidence scores
+- Section structure and headings
+- Block-level content typing (paragraph, code, table, list, etc.)
+- Detailed metadata for filtering and analysis
 
-```
-URLs → Worker Pool (8 parallel) → Smart Parser → Structured JSON + Summary
-                                       ↓
-                                Auto-escalates
-                                cheap → full
-                                       ↓
-                                  MapReduce
-                                  Keywords
-```
-
-**Three-phase pipeline:**
-
-1. **Parallel Fetch** (4-8 workers)
-   - Concurrent HTTP requests with timeouts
-   - Failed URLs don't block batch
-   - File size caching to avoid redundant I/O
-
-2. **Smart Parsing** (two-tier strategy)
-   - **Cheap mode** (default): Fast, flat structure, good for text-heavy pages
-   - **Full mode** (auto-escalates): Rich hierarchy, tables, code blocks, citations
-   - Auto-detects quality issues and re-parses when needed
-
-3. **MapReduce Analytics**
-   - Map: Extract word frequencies per page
-   - Reduce: Aggregate keywords across all pages
-   - Output: Top 25 keywords with counts
-
-**Performance characteristics:**
-- **Scaling:** 8 workers = 1.37x speedup (non-linear due to I/O)
-- **Quality:** 92.5% success rate on real-world URLs
-- **Efficiency:** Summary manifest eliminates 38 redundant os.Stat() calls (saves ~2.5s)
-
----
-
-## Project Structure
-
-```
-llm-web-parser/
-├── main.go              # Worker pool orchestration
-├── config.yaml          # URLs + worker count
-├── models/              # Page, Section, Metadata types
-├── pkg/
-│   ├── fetcher/        # Parallel HTTP client
-│   ├── parser/         # HTML → JSON (cheap/full modes)
-│   ├── storage/        # File I/O + caching
-│   ├── manifest/       # Summary generation
-│   ├── mapreduce/      # Keyword aggregation + filtering
-│   └── analytics/      # Word frequency stats
-└── results/            # Generated JSON + summary
+Usage:
+```bash
+llm-web-parser fetch --urls "..." --features full-parse
 ```
 
-**Key design decisions:**
-- Separation of concerns (orchestration in main.go, logic in packages)
-- Caching layer to avoid redundant I/O
-- Conservative keyword filtering (removes malformed tokens, keeps technical terms)
+## URL Sanitization
 
----
+Automatic "mostly mean mode" - cleans common errors but fails fast on malformed URLs:
 
-## Use Cases
+**Auto-cleaned:**
+- Whitespace (leading/trailing)
+- Trailing punctuation (`,`, `.`, `)`, `]`, etc.)
+- Markdown links: `[text](url)` → `url`
+- Surrounding quotes/brackets
 
-### 1. Competitive Analysis
+**Hard fails:**
+- Literal spaces in URLs (must be `%20`)
+- Braces `{}` in domains
+- Empty URLs
+
+**Track what was cleaned:**
+```bash
+llm-web-parser db urls --sanitized
+# Shows original vs cleaned URLs
+```
+
+## Output Formats
+
+### YAML (Default, Token-Efficient)
 ```yaml
-urls:
-  - https://competitor1.com/features
-  - https://competitor2.com/features
-  - https://competitor3.com/features
+# Session: 1
+- url: https://golang.org
+  url_id: 42
+  status: success
+  title: The Go Programming Language
+  confidence: 8.5
+  domain_type: commercial
+  domain_category: docs/api
+  word_count: 450
+  estimated_tokens: 180
 ```
-**→** Structured comparison in 5 seconds. LLM prompt: "Compare features where confidence > 0.7"
 
-### 2. Documentation Aggregation
-```yaml
-urls:
-  - https://docs.example.com/api/auth
-  - https://docs.example.com/api/users
-  - https://docs.example.com/sdk/python
-```
-**→** Unified API reference. LLM prompt: "Extract all code blocks (confidence == 0.95)"
-
-### 3. Recursive Crawling
+### JSON (Alternative)
 ```bash
-# 1. Fetch root page
-# 2. Extract internal links with confidence > 0.5
-# 3. Add to config.yaml, re-run
-```
-**→** Depth-first blog archive crawl with preserved structure
-
-### 4. Trend Analysis
-40 news articles → MapReduce → Top 25 keywords across all content
-
----
-
-## Advanced Configuration
-
-**Custom worker count** (edit `config.yaml`):
-```yaml
-worker_count: 8  # Default: 4
+llm-web-parser fetch --urls "..." --format json
 ```
 
-**Force full parsing** (edit `main.go:72`):
-```go
-Mode: models.ParseModeFull,  // Skip cheap mode
-```
+## Performance
 
-**Quality filtering** (post-process summary):
+**Minimal mode:**
+- 40-50 URLs: 2-5 seconds (optimal batch size)
+- 80 URLs: 10-20 seconds (depends on site response times)
+- Cache hits: <100ms for any size
+
+**Bottlenecks:**
+- 5-second timeout per URL (slow sites impact total time)
+- Network latency for fresh fetches
+- Cache hits are effectively instant
+
+**Recommendations:**
+- Use 40-50 URL batches for optimal performance
+- Two-stage workflow: minimal scan → full-parse on selected URLs
+- Cache makes repeated queries instant
+
+## Environment
+
+**Database location:**
+- Stored next to binary: `./llm-web-parser.db`
+- Auto-creates on first use
+- SQLite with WAL mode for performance
+
+**Results directory:**
+- Default: `./llm-web-parser-results/`
+- Override: `--output-dir /path/to/results`
+
+**Reset everything:**
 ```bash
-jq '.results[] | select(.extraction_quality == "ok" and .word_count > 100)' summary-*.json
+rm llm-web-parser.db
+rm -rf llm-web-parser-results/
+# Auto-recreates on next fetch
 ```
 
----
+## Tips for LLMs
 
-## Design Principles
+1. **Use URL IDs** - Saves 90% tokens vs full URLs
+   ```
+   lwp db show 42    # Instead of lwp db show https://example.com
+   ```
 
-1. **LLM-First:** Confidence scores guide attention, hierarchical structure enables selective querying
-2. **Fail Gracefully:** Auto-escalation, per-URL errors don't block batch, quality signals prevent silent failures
-3. **Production-Grade:** Timeouts, caching, separation of concerns, 92.5% success rate on real-world URLs
+2. **Default to latest session** - Most commands use latest automatically
+   ```
+   lwp db urls       # No session ID needed
+   lwp db get --file=details
+   ```
 
----
+3. **Batch operations** - Get multiple URLs at once
+   ```
+   lwp db show 42,43,44,45
+   ```
 
-## Comparison to Alternatives
+4. **Filter in YAML** - Use yq for powerful queries
+   ```
+   lwp db get --file=details | yq '.[] | select(.confidence >= 7 and .word_count > 500)'
+   ```
 
-| Feature | LLM Web Parser | BeautifulSoup | Jina Reader | Firecrawl |
-|---------|---------------|---------------|-------------|-----------|
-| **Parallel fetching** | ✅ (4 workers) | ❌ | ✅ | ✅ |
-| **Confidence scoring** | ✅ | ❌ | ❌ | ❌ |
-| **Hierarchical sections** | ✅ | ❌ | ❌ | ⚠️ (flat markdown) |
-| **Auto quality detection** | ✅ | ❌ | ⚠️ | ⚠️ |
-| **Content type detection** | ✅ | ❌ | ❌ | ❌ |
-| **Link classification** | ✅ (internal/external) | ❌ | ❌ | ❌ |
-| **Self-hosted** | ✅ | ✅ | ❌ (API) | ⚠️ |
-| **LLM-optimized output** | ✅ | ❌ | ⚠️ | ⚠️ |
-| **MapReduce analytics** | ✅ | ❌ | ❌ | ❌ |
+5. **Session refetch** - Easy multi-stage workflows
+   ```
+   lwp fetch --urls "..."              # Minimal scan
+   lwp fetch --session 1 --features full-parse  # Deep dive
+   ```
 
----
+## Error Handling
 
-## Limitations & Roadmap
+**Malformed URLs:**
+```
+Error: 1 URL(s) are malformed (even after cleanup):
+  - invalid url with spaces
 
-**Current limitations:**
-- ❌ JavaScript-heavy SPAs (use Playwright/Puppeteer instead)
-- ❌ No robots.txt respect
-- ❌ No per-domain rate limiting
-- ❌ No URL deduplication
+Note: URLs are auto-cleaned (whitespace trimmed, trailing punctuation removed, markdown links extracted)
+      Spaces in URLs must be pre-encoded as %20. Braces {} in domains are not allowed.
+```
 
-**Planned (see `todos.yaml`):**
-- ⏳ CLI args + stdout output (P0 - eliminates config.yaml friction)
-- ⏳ Extract subcommand for selective filtering (P0)
-- ⏳ Retry logic with exponential backoff (P0-post-launch)
-- ⏳ 65 golangci-lint fixes (errcheck, gosec, revive, etc.)
+**Failed fetches:**
+- Logged to `failed-urls.yaml` in session directory
+- Retry with: `lwp fetch --session <id> --failed-only`
+- Exit codes: 0 = success, 1 = partial failure, 2 = complete failure
 
----
+**No sessions:**
+```
+Error: no sessions found. Run 'lwp fetch --urls "..."' first
+```
 
-## Dependencies
+## Examples
 
-- `goquery` - HTML parsing | `go-readability` - Article extraction | `lingua-go` - Language detection
+See `llm-web-parser-results/FIELDS.yaml` for:
+- Complete field reference
+- Query examples with yq
+- Usage patterns
 
-All production-grade, battle-tested libraries.
-
----
-
-## Contributing
-
-Pull requests welcome! See `todos.yaml` for prioritized tasks.
-
-**High-value areas:**
-- CLI argument parsing (P0)
-- Summary output mode (P0)
-- Retry logic and rate limiting (P1)
-
----
+Run `llm-web-parser --coldstart` for:
+- Quick start guide
+- Common commands
+- Session system invariants
 
 ## License
 
-MIT - See LICENSE file
+MIT
 
----
+## Contributing
 
-**Questions?** See `LLM-USAGE.md` for LLM integration patterns | `todos.yaml` for roadmap
+Pull requests welcome! This tool is actively maintained.

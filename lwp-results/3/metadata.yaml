@@ -1,0 +1,13 @@
+url_id: 3
+url: https://go.dev/blog/intro-generics
+domain: go.dev
+content_type: docs
+content_subtype: general-docs
+detection_confidence: 5.5
+has_abstract: false
+has_infobox: false
+has_toc: false
+has_code_examples: true
+section_count: 0
+citation_count: 0
+code_block_count: 146

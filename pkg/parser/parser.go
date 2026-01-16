@@ -411,5 +411,73 @@ func enrichMetadata(page *models.Page, article readability.Article, rawURL strin
 	page.Metadata.HasReferences = enriched.HasReferences
 	page.Metadata.HasAbstract = enriched.HasAbstract
 	page.Metadata.AcademicScore = enriched.AcademicScore
+
+	// Content type detection (enhanced classification)
+	contentType := detector.DetectContentType(rawURL, article.Title, article.Content)
+	page.Metadata.ContentType = contentType.ContentType
+	page.Metadata.ContentSubtype = contentType.ContentSubtype
+
+	// Detect content features for specialized extraction
+	page.Metadata.HasInfobox = detectInfobox(article.Content)
+	page.Metadata.HasTOC = detectTOC(article.Content)
+	page.Metadata.HasCodeExamples = detectCodeExamples(article.Content)
+	page.Metadata.CitationCount = countCitations(article.Content)
+	page.Metadata.CodeBlockCount = countCodeBlocks(article.Content)
+}
+
+// detectInfobox checks for Wikipedia-style infobox
+func detectInfobox(content string) bool {
+	lowerContent := strings.ToLower(content)
+	return strings.Contains(lowerContent, "infobox") ||
+		strings.Contains(lowerContent, "class=\"infobox\"") ||
+		strings.Contains(lowerContent, "wikitable")
+}
+
+// detectTOC checks for table of contents
+func detectTOC(content string) bool {
+	lowerContent := strings.ToLower(content)
+	return strings.Contains(lowerContent, "table of contents") ||
+		strings.Contains(lowerContent, "id=\"toc\"") ||
+		strings.Contains(lowerContent, "class=\"toc\"")
+}
+
+// detectCodeExamples checks for code blocks
+func detectCodeExamples(content string) bool {
+	return strings.Count(content, "```") >= 2 ||
+		strings.Count(content, "<code>") >= 2 ||
+		strings.Count(content, "<pre>") >= 2
+}
+
+// countCitations counts citation markers
+func countCitations(content string) int {
+	count := 0
+	lowerContent := strings.ToLower(content)
+
+	// Count numbered citations [1], [2], etc.
+	for i := 1; i <= 100; i++ {
+		marker := fmt.Sprintf("[%d]", i)
+		if strings.Contains(content, marker) {
+			count++
+		} else {
+			break // Stop when we don't find the next sequential number
+		}
+	}
+
+	// Also count "et al." occurrences (common in citations)
+	count += strings.Count(lowerContent, "et al.")
+
+	return count
+}
+
+// countCodeBlocks counts code blocks in content
+func countCodeBlocks(content string) int {
+	// Count markdown code blocks
+	markdownBlocks := strings.Count(content, "```") / 2
+
+	// Count HTML code blocks
+	htmlCodeBlocks := strings.Count(content, "<code>")
+	htmlPreBlocks := strings.Count(content, "<pre>")
+
+	return markdownBlocks + htmlCodeBlocks + htmlPreBlocks
 }
 

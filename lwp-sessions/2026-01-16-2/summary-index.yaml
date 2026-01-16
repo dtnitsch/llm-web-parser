@@ -1,0 +1,6 @@
+- url: https://go.dev/blog/intro-generics
+  cat: blog
+  conf: 5.5
+  title: An Introduction To Generics - The Go Programming Language
+  desc: An introduction to generics in Go.
+  tokens: 1077

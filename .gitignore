@@ -6,6 +6,9 @@
 *.dylib
 llm-web-parser
 
+test*.txt
+lwp
+
 # Test binary, built with `go test -c`
 *.test
 
@@ -52,3 +55,4 @@ Thumbs.db
 
 # Runtime generated files
 index.yaml
+main.go.old

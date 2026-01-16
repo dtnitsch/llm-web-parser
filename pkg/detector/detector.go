@@ -316,3 +316,290 @@ func (em *EnrichedMetadata) calculateConfidence() float64 {
 
 	return confidence
 }
+
+// ContentTypeResult represents the detected content type classification.
+type ContentTypeResult struct {
+	ContentType    string  // academic, docs, wiki, news, repo, blog, landing, unknown
+	ContentSubtype string  // arxiv-paper, api-docs, reference, etc.
+	Confidence     float64 // 0-10 confidence score
+}
+
+// DetectContentType classifies page content type based on URL, title, and content patterns.
+func DetectContentType(rawURL, title, content string) ContentTypeResult {
+	result := ContentTypeResult{
+		ContentType: "unknown",
+		Confidence:  5.0,
+	}
+
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return result
+	}
+
+	host := strings.ToLower(parsedURL.Host)
+	path := strings.ToLower(parsedURL.Path)
+	lowerTitle := strings.ToLower(title)
+	lowerContent := strings.ToLower(content)
+
+	// Academic detection (highest priority for research content)
+	if detectAcademic(host, path, lowerTitle, lowerContent) {
+		result.ContentType = "academic"
+		result.Confidence = 9.0
+
+		// Detect subtype
+		if strings.Contains(host, "arxiv.org") {
+			result.ContentSubtype = "arxiv-paper"
+		} else if strings.Contains(host, "pubmed") {
+			result.ContentSubtype = "pubmed-article"
+		} else if strings.Contains(host, "doi.org") {
+			result.ContentSubtype = "doi-reference"
+		} else if strings.Contains(lowerContent, "abstract") && strings.Contains(lowerContent, "references") {
+			result.ContentSubtype = "research-paper"
+		} else {
+			result.ContentSubtype = "academic-general"
+		}
+		return result
+	}
+
+	// Documentation detection
+	if detectDocs(host, path, lowerTitle, lowerContent) {
+		result.ContentType = "docs"
+		result.Confidence = 8.5
+
+		// Detect subtype
+		if strings.Contains(lowerTitle, "api") || strings.Contains(path, "/api/") {
+			result.ContentSubtype = "api-docs"
+		} else if strings.Contains(lowerTitle, "reference") {
+			result.ContentSubtype = "reference"
+		} else if strings.Contains(lowerTitle, "tutorial") || strings.Contains(lowerTitle, "guide") {
+			result.ContentSubtype = "tutorial"
+		} else {
+			result.ContentSubtype = "general-docs"
+		}
+		return result
+	}
+
+	// Wikipedia detection
+	if detectWiki(host, path, lowerContent) {
+		result.ContentType = "wiki"
+		result.ContentSubtype = "wikipedia"
+		result.Confidence = 9.5
+		return result
+	}
+
+	// Repository detection (GitHub, GitLab, etc.)
+	if detectRepo(host, path) {
+		result.ContentType = "repo"
+		result.Confidence = 8.0
+
+		if strings.Contains(host, "github.com") {
+			result.ContentSubtype = "github"
+		} else if strings.Contains(host, "gitlab.com") {
+			result.ContentSubtype = "gitlab"
+		} else {
+			result.ContentSubtype = "git-repository"
+		}
+		return result
+	}
+
+	// Blog detection
+	if detectBlog(host, path, lowerContent) {
+		result.ContentType = "blog"
+		result.ContentSubtype = "blog-post"
+		result.Confidence = 7.5
+		return result
+	}
+
+	// News detection
+	if detectNews(host, lowerTitle) {
+		result.ContentType = "news"
+		result.Confidence = 8.0
+
+		if strings.Contains(host, "tech") {
+			result.ContentSubtype = "tech-news"
+		} else {
+			result.ContentSubtype = "news-article"
+		}
+		return result
+	}
+
+	// Landing page detection (low content, marketing-focused)
+	if detectLanding(lowerContent) {
+		result.ContentType = "landing"
+		result.ContentSubtype = "marketing"
+		result.Confidence = 6.0
+		return result
+	}
+
+	// Default: unknown with medium-low confidence
+	result.Confidence = 4.0
+	return result
+}
+
+// detectAcademic checks for academic paper patterns
+func detectAcademic(host, path, title, content string) bool {
+	// URL-based detection
+	academicHosts := []string{
+		"arxiv.org", "doi.org", "pubmed", "scholar.google",
+		"researchgate.net", "academia.edu", "biorxiv.org",
+		"medrxiv.org", "ssrn.com",
+	}
+	for _, ah := range academicHosts {
+		if strings.Contains(host, ah) {
+			return true
+		}
+	}
+
+	// Path patterns
+	if strings.Contains(path, "/abs/") || strings.Contains(path, "/paper/") {
+		return true
+	}
+
+	// Title patterns
+	titlePatterns := []string{"abstract", "arxiv:", "doi:"}
+	for _, pattern := range titlePatterns {
+		if strings.Contains(title, pattern) {
+			return true
+		}
+	}
+
+	// Strong academic signals in content
+	academicSignals := 0
+	if strings.Contains(content, "abstract") {
+		academicSignals++
+	}
+	if strings.Contains(content, "references") || strings.Contains(content, "bibliography") {
+		academicSignals++
+	}
+	if regexp.MustCompile(`10\.\d{4,}/`).MatchString(content) { // DOI pattern
+		academicSignals++
+	}
+	if strings.Contains(content, "et al.") {
+		academicSignals++
+	}
+
+	return academicSignals >= 3
+}
+
+// detectDocs checks for documentation patterns
+func detectDocs(host, path, title, content string) bool {
+	// URL-based detection
+	if strings.Contains(host, "docs.") || strings.Contains(host, "documentation.") {
+		return true
+	}
+	if strings.Contains(path, "/docs/") || strings.Contains(path, "/documentation/") {
+		return true
+	}
+	if strings.Contains(path, "/reference/") || strings.Contains(path, "/manual/") {
+		return true
+	}
+
+	// Title patterns
+	docsTitlePatterns := []string{
+		"documentation", "api reference", "getting started",
+		"user guide", "developer guide", "manual",
+	}
+	for _, pattern := range docsTitlePatterns {
+		if strings.Contains(title, pattern) {
+			return true
+		}
+	}
+
+	// Content patterns (code examples + structured sections)
+	hasCodeBlocks := strings.Count(content, "```") >= 2 || strings.Count(content, "<code>") >= 3
+	hasSections := strings.Count(content, "##") >= 3 || strings.Count(content, "<h2") >= 3
+
+	return hasCodeBlocks && hasSections
+}
+
+// detectWiki checks for Wikipedia or wiki-style content
+func detectWiki(host, path, content string) bool {
+	// Wikipedia domains
+	if strings.Contains(host, "wikipedia.org") {
+		return true
+	}
+
+	// Path pattern
+	if strings.Contains(path, "/wiki/") {
+		return true
+	}
+
+	// Infobox detection (strong Wikipedia signal)
+	if strings.Contains(content, "infobox") || strings.Contains(content, "class=\"infobox\"") {
+		return true
+	}
+
+	return false
+}
+
+// detectRepo checks for code repository patterns
+func detectRepo(host, path string) bool {
+	repoHosts := []string{"github.com", "gitlab.com", "bitbucket.org"}
+	for _, rh := range repoHosts {
+		if strings.Contains(host, rh) {
+			return true
+		}
+	}
+	return false
+}
+
+// detectBlog checks for blog patterns
+func detectBlog(host, path, content string) bool {
+	// URL-based detection
+	if strings.Contains(host, "blog.") || strings.Contains(path, "/blog/") {
+		return true
+	}
+
+	// Blog platforms
+	blogPlatforms := []string{"medium.com", "substack.com", "wordpress.com", "blogger.com"}
+	for _, bp := range blogPlatforms {
+		if strings.Contains(host, bp) {
+			return true
+		}
+	}
+
+	// Author byline + published date (common blog pattern)
+	hasAuthor := strings.Contains(content, "by ") || strings.Contains(content, "author")
+	hasDate := regexp.MustCompile(`\d{4}-\d{2}-\d{2}`).MatchString(content)
+
+	return hasAuthor && hasDate
+}
+
+// detectNews checks for news article patterns
+func detectNews(host, title string) bool {
+	newsDomains := []string{
+		"techcrunch", "wired", "arstechnica", "theverge",
+		"reuters", "bbc", "cnn", "nytimes", "wsj",
+		"bloomberg", "forbes",
+	}
+	for _, nd := range newsDomains {
+		if strings.Contains(host, nd) {
+			return true
+		}
+	}
+
+	// News-style headlines (all caps words, breaking, exclusive)
+	newsPatterns := []string{"breaking:", "exclusive:", "report:", "update:"}
+	for _, pattern := range newsPatterns {
+		if strings.Contains(title, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// detectLanding checks for landing page patterns
+func detectLanding(content string) bool {
+	// Landing pages tend to have:
+	// - Low word count
+	// - High button/CTA count
+	// - Minimal actual content
+
+	wordCount := len(strings.Fields(content))
+	ctaCount := strings.Count(content, "sign up") + strings.Count(content, "get started") +
+		strings.Count(content, "try free") + strings.Count(content, "buy now")
+
+	// Low content + high CTAs = landing page
+	return wordCount < 500 && ctaCount >= 2
+}
