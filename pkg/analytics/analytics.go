@@ -95,7 +95,7 @@ var commonWords = map[string]struct{}{
 	"wherever": {}, "whether": {}, "which": {}, "while": {}, "whither": {},
 	"who": {}, "who'd": {}, "whoever": {}, "who'll": {}, "who's": {},
 	"whose": {}, "why": {}, "with": {}, "within": {}, "without": {},
-	"won't": {}, "would": {}, "wouldn't": {},
+	"will": {}, "won't": {}, "would": {}, "wouldn't": {},
 
 	"yet": {}, "you": {}, "you'd": {}, "you'll": {}, "you're": {},
 	"you've": {}, "your": {}, "yours": {}, "yourself": {}, "yourselves": {},
@@ -111,6 +111,32 @@ var commonWords = map[string]struct{}{
 	"home": {}, "homepage": {},
 	"search": {}, "searching": {}, "searched": {},
 	"loading": {}, "loaded": {}, "load": {}, "loads": {},
+
+	// Common vague/generic words that add noise to keyword analysis
+	"new": {}, "old": {},
+	"second": {}, "third": {}, // first/last already in main list
+	"way": {}, "ways": {},
+	"thing": {}, "things": {},
+	"example": {}, "examples": {},
+	"need": {}, "needs": {}, "needed": {}, "needing": {},
+	"used": {}, "uses": {}, "using": {}, // "use" already in main list
+	"run": {}, "runs": {}, "running": {},
+	"call": {}, "calls": {}, "called": {}, "calling": {},
+	"get": {}, "gets": {}, "getting": {},
+	"set": {}, "sets": {}, "setting": {},
+	"makes": {}, "making": {}, // "make"/"made" already in main list
+	"give": {}, "gives": {}, "giving": {}, "given": {},
+	"takes": {}, "taking": {}, "took": {}, "taken": {}, // "take" already in main list
+	"know": {}, "knows": {}, "knowing": {}, "known": {},
+	"think": {}, "thinks": {}, "thinking": {}, "thought": {},
+	"tell": {}, "tells": {}, "telling": {}, "told": {},
+	"show": {}, "shows": {}, "showing": {}, "shown": {},
+	"try": {}, "tries": {}, "trying": {}, "tried": {},
+	"ask": {}, "asks": {}, "asking": {}, "asked": {},
+	"work": {}, "works": {}, "working": {}, "worked": {},
+	"feel": {}, "feels": {}, "feeling": {}, "felt": {},
+	"leave": {}, "leaves": {}, "leaving": {}, "left": {},
+	"puts": {}, "putting": {}, // "put" already in main list
 }
 
 // IsStopword checks if a word is a common stopword that should be filtered out.

@@ -111,11 +111,9 @@ func (cb ContentBlock) MarshalYAML() (interface{}, error) {
 		m["links"] = cb.Links
 	}
 
-	// Include confidence only if not default (0.5)
-	// Float comparison: check if not within epsilon of 0.5
-	if cb.Confidence < 0.49 || cb.Confidence > 0.51 {
-		m["confidence"] = cb.Confidence
-	}
+	// Always include confidence (needed for round-trip YAML marshal/unmarshal)
+	// Even though 0.5 is common, filtering it causes issues when re-parsing
+	m["confidence"] = cb.Confidence
 
 	// Note: ID is intentionally omitted (sequential IDs not useful for LLM reading)
 

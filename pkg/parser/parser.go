@@ -48,7 +48,12 @@ func (p *Parser) Parse(req models.ParseRequest) (*models.Page, error) {
 
 		// 🔑 escalation logic lives HERE
 		if page.Metadata.ExtractionQuality == "low" {
-			return p.parseFull(req.URL, article, parsedURL)
+			page, err = p.parseFull(req.URL, article, parsedURL)
+			if err != nil {
+				return nil, err
+			}
+			// Compute metadata for escalated page
+			page.ComputeMetadata()
 		}
 
 	case models.ParseModeFull:
@@ -174,11 +179,15 @@ func (p *Parser) parseFull(
 
 		// CODE
 		if tag == "pre" || tag == "code" {
+			codeContent := cleanCodeBlock(s)
+			if codeContent == "" {
+				return // Skip empty/line-number-only blocks
+			}
 			blockCounter++
 			currentSection().Blocks = append(currentSection().Blocks, models.ContentBlock{
 				ID:         fmt.Sprintf("block-%d", blockCounter),
 				Type:       "code",
-				Code:       &models.Code{Content: s.Text()},
+				Code:       &models.Code{Content: codeContent},
 				Links:      links,
 				Confidence: 0.95,
 			})
@@ -229,7 +238,16 @@ func (p *Parser) parseCheap(rawURL string, article readability.Article, parsedUR
 			return
 		}
 
-		text := normalizeText(s.Text())
+		tag := goquery.NodeName(s)
+		var text string
+
+		// Handle code blocks specially to remove line numbers
+		if tag == "pre" {
+			text = cleanCodeBlock(s)
+		} else {
+			text = normalizeText(s.Text())
+		}
+
 		if text == "" {
 			return
 		}
@@ -239,7 +257,7 @@ func (p *Parser) parseCheap(rawURL string, article readability.Article, parsedUR
 
 		blocks = append(blocks, models.ContentBlock{
 			ID:         fmt.Sprintf("block-%d", blockCounter),
-			Type:       goquery.NodeName(s),
+			Type:       tag,
 			Text:       text,
 			Links:      links,
 			Confidence: 0.5, // neutral
@@ -479,5 +497,37 @@ func countCodeBlocks(content string) int {
 	htmlPreBlocks := strings.Count(content, "<pre>")
 
 	return markdownBlocks + htmlCodeBlocks + htmlPreBlocks
+}
+
+// cleanCodeBlock removes line numbers and cleans code block content
+func cleanCodeBlock(s *goquery.Selection) string {
+	// Clone the selection to avoid modifying the original
+	clone := s.Clone()
+
+	// Remove elements commonly used for line numbers
+	clone.Find(".line-number, .lineno, .line-numbers, .gutter, .linenumber").Remove()
+	clone.Find("[class*='line-num']").Remove()
+	clone.Find("[class*='lineno']").Remove()
+
+	// Get the text content
+	text := clone.Text()
+
+	// Clean up the text
+	text = normalizeText(text)
+
+	// If the result looks like just line numbers (all digits/spaces), return empty
+	// This handles cases where entire pre blocks are just line number containers
+	allDigitsOrSpaces := true
+	for _, r := range text {
+		if r != ' ' && r != '\n' && r != '\t' && (r < '0' || r > '9') {
+			allDigitsOrSpaces = false
+			break
+		}
+	}
+	if allDigitsOrSpaces && len(text) > 0 {
+		return ""
+	}
+
+	return text
 }
 
