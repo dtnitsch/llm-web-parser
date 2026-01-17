@@ -9,8 +9,8 @@ llm-web-parser
 test*.txt
 lwp
 
-lwp-results/
-lwp-sessions/
+lwp-results/*
+lwp-sessions/*
 lwp-test
 lwp-test
 
