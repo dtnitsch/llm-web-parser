@@ -117,12 +117,6 @@ NOTES:
 						Usage: "Force fetching all URLs, ignoring max-age and existing artifacts",
 					},
 					&cli.StringFlag{
-						Name:    "config",
-						Usage:   "Path to the configuration file",
-						Aliases: []string{"c"},
-						Value:   "config.yaml",
-					},
-					&cli.StringFlag{
 						Name:  "output-dir",
 						Usage: "Base directory for storing raw and parsed artifacts",
 						Value: artifact_manager.DefaultBaseDir,

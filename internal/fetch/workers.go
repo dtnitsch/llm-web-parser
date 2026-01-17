@@ -59,7 +59,7 @@ func formatWordCountsSorted(counts map[string]int) string {
 	return sb.String()
 }
 
-func run(logger *slog.Logger, config *models.Config, manager *artifact_manager.Manager, forceFetch bool, parseMode models.ParseMode, filterStrategy *extractor.Strategy, database *db.DB) ([]Result, map[string]int, error) {
+func run(logger *slog.Logger, config *models.FetchConfig, manager *artifact_manager.Manager, forceFetch bool, parseMode models.ParseMode, filterStrategy *extractor.Strategy, database *db.DB) ([]Result, map[string]int, error) {
 	f := fetcher.NewFetcher()
 	p := &parser.Parser{}
 	a := &analytics.Analytics{}

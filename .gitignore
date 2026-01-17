@@ -9,6 +9,12 @@ llm-web-parser
 test*.txt
 lwp
 
+lwp-results/
+lwp-sessions/
+lwp-test
+
+*.db
+
 # Test binary, built with `go test -c`
 *.test
 

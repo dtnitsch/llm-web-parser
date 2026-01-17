@@ -54,13 +54,10 @@ func FetchAction(c *cli.Context) error {
 	}
 	defer database.Close()
 
-	config, err := models.LoadConfig(c.String("config"))
-	if err != nil {
-		if !os.IsNotExist(err) {
-			logger.Error("failed to load config", "error", err)
-			os.Exit(2)
-		}
-		config = &models.Config{}
+	// Initialize runtime config from CLI flags
+	config := &models.FetchConfig{
+		URLs:        []string{},
+		WorkerCount: c.Int("workers"),
 	}
 
 	// Load URLs from session if --session is provided
@@ -121,9 +118,7 @@ func FetchAction(c *cli.Context) error {
 	if c.IsSet("urls") {
 		config.URLs = strings.Split(c.String("urls"), ",")
 	}
-	if c.IsSet("workers") {
-		config.WorkerCount = c.Int("workers")
-	}
+	// WorkerCount is already set during config initialization from CLI flag
 
 	if len(config.URLs) == 0 {
 		fmt.Fprintln(os.Stderr, "Error: No URLs provided")
@@ -132,9 +127,6 @@ func FetchAction(c *cli.Context) error {
 		fmt.Fprintln(os.Stderr, `  llm-web-parser fetch --urls "https://example.com,https://example.org"`)
 		fmt.Fprintln(os.Stderr, `  llm-web-parser fetch --session 5                         # Refetch all URLs from session 5`)
 		fmt.Fprintln(os.Stderr, `  llm-web-parser fetch --session 5 --failed-only          # Retry only failed URLs`)
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Or use a config file:")
-		fmt.Fprintln(os.Stderr, "  llm-web-parser fetch --config urls.yaml")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Need help? Run: llm-web-parser fetch --help")
 		os.Exit(1)
