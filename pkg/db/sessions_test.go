@@ -10,11 +10,12 @@ func TestFindOrCreateSession_NewSession(t *testing.T) {
 	defer db.Close()
 
 	urls := []string{"https://example.com", "https://example.org"}
+	originalURLs := urls // Same as sanitized for this test
 	features := "full-parse"
 	parseMode := "full"
 	maxAge := 1 * time.Hour
 
-	sessionID, cacheHit, err := db.FindOrCreateSession(urls, features, parseMode, maxAge)
+	sessionID, cacheHit, err := db.FindOrCreateSession(originalURLs, urls, features, parseMode, maxAge)
 	if err != nil {
 		t.Fatalf("FindOrCreateSession() error = %v", err)
 	}
@@ -52,7 +53,7 @@ func TestFindOrCreateSession_CacheHit(t *testing.T) {
 	maxAge := 1 * time.Hour
 
 	// Create first session
-	sessionID1, cacheHit1, err := db.FindOrCreateSession(urls, "full-parse", "full", maxAge)
+	sessionID1, cacheHit1, err := db.FindOrCreateSession(urls, urls, "full-parse", "full", maxAge)
 	if err != nil {
 		t.Fatalf("FindOrCreateSession() first call error = %v", err)
 	}
@@ -61,7 +62,7 @@ func TestFindOrCreateSession_CacheHit(t *testing.T) {
 	}
 
 	// Second call with same URLs should hit cache
-	sessionID2, cacheHit2, err := db.FindOrCreateSession(urls, "full-parse", "full", maxAge)
+	sessionID2, cacheHit2, err := db.FindOrCreateSession(urls, urls, "full-parse", "full", maxAge)
 	if err != nil {
 		t.Fatalf("FindOrCreateSession() second call error = %v", err)
 	}
@@ -83,12 +84,12 @@ func TestFindOrCreateSession_DifferentURLs(t *testing.T) {
 	urls2 := []string{"https://example.org"}
 	maxAge := 1 * time.Hour
 
-	sessionID1, _, err := db.FindOrCreateSession(urls1, "", "", maxAge)
+	sessionID1, _, err := db.FindOrCreateSession(urls1, urls1, "", "", maxAge)
 	if err != nil {
 		t.Fatalf("FindOrCreateSession() first call error = %v", err)
 	}
 
-	sessionID2, cacheHit, err := db.FindOrCreateSession(urls2, "", "", maxAge)
+	sessionID2, cacheHit, err := db.FindOrCreateSession(urls2, urls2, "", "", maxAge)
 	if err != nil {
 		t.Fatalf("FindOrCreateSession() second call error = %v", err)
 	}
@@ -110,12 +111,12 @@ func TestFindOrCreateSession_URLOrderIndependent(t *testing.T) {
 	urls2 := []string{"https://example.org", "https://example.com"} // Reversed order
 	maxAge := 1 * time.Hour
 
-	sessionID1, _, err := db.FindOrCreateSession(urls1, "", "", maxAge)
+	sessionID1, _, err := db.FindOrCreateSession(urls1, urls1, "", "", maxAge)
 	if err != nil {
 		t.Fatalf("FindOrCreateSession() first call error = %v", err)
 	}
 
-	sessionID2, cacheHit, err := db.FindOrCreateSession(urls2, "", "", maxAge)
+	sessionID2, cacheHit, err := db.FindOrCreateSession(urls2, urls2, "", "", maxAge)
 	if err != nil {
 		t.Fatalf("FindOrCreateSession() second call error = %v", err)
 	}
@@ -137,7 +138,7 @@ func TestFindOrCreateSession_MaxAgeExpiry(t *testing.T) {
 	maxAge := 100 * time.Millisecond
 
 	// Create first session
-	sessionID1, _, err := db.FindOrCreateSession(urls, "", "", maxAge)
+	sessionID1, _, err := db.FindOrCreateSession(urls, urls, "", "", maxAge)
 	if err != nil {
 		t.Fatalf("FindOrCreateSession() first call error = %v", err)
 	}
@@ -146,7 +147,7 @@ func TestFindOrCreateSession_MaxAgeExpiry(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 
 	// Second call should create new session (expired)
-	sessionID2, cacheHit, err := db.FindOrCreateSession(urls, "", "", maxAge)
+	sessionID2, cacheHit, err := db.FindOrCreateSession(urls, urls, "", "", maxAge)
 	if err != nil {
 		t.Fatalf("FindOrCreateSession() second call error = %v", err)
 	}
@@ -166,7 +167,7 @@ func TestInsertSessionResult(t *testing.T) {
 
 	// Create session and URL
 	urlID, _ := db.InsertURL("https://example.com")
-	sessionID, _, _ := db.FindOrCreateSession([]string{"https://example.com"}, "", "", 1*time.Hour)
+	sessionID, _, _ := db.FindOrCreateSession([]string{"https://example.com"}, []string{"https://example.com"}, "", "", 1*time.Hour)
 
 	// Insert result
 	err := db.InsertSessionResult(sessionID, urlID, "success", 200, "", "", 1024, 256)
@@ -206,7 +207,7 @@ func TestUpdateSessionStats(t *testing.T) {
 	defer db.Close()
 
 	// Create session
-	sessionID, _, _ := db.FindOrCreateSession([]string{"https://example.com"}, "", "", 1*time.Hour)
+	sessionID, _, _ := db.FindOrCreateSession([]string{"https://example.com"}, []string{"https://example.com"}, "", "", 1*time.Hour)
 
 	// Update stats
 	err := db.UpdateSessionStats(sessionID, 8, 2)
@@ -233,7 +234,7 @@ func TestGetSessionURLs(t *testing.T) {
 	defer db.Close()
 
 	urls := []string{"https://example.com", "https://example.org", "https://example.net"}
-	sessionID, _, _ := db.FindOrCreateSession(urls, "", "", 1*time.Hour)
+	sessionID, _, _ := db.FindOrCreateSession(urls, urls, "", "", 1*time.Hour)
 
 	// Get session URLs
 	sessionURLs, err := db.GetSessionURLs(sessionID)
@@ -263,7 +264,7 @@ func TestSessionDir_Naming(t *testing.T) {
 	defer db.Close()
 
 	urls := []string{"https://example.com"}
-	sessionID, _, err := db.FindOrCreateSession(urls, "", "", 1*time.Hour)
+	sessionID, _, err := db.FindOrCreateSession(urls, urls, "", "", 1*time.Hour)
 	if err != nil {
 		t.Fatalf("FindOrCreateSession() error = %v", err)
 	}

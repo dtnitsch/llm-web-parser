@@ -99,7 +99,11 @@ func SessionAction(c *cli.Context) error {
 	fmt.Println(strings.Repeat("-", 60))
 	for i, u := range urls {
 		fmt.Printf("%2d. %s\n", i+1, u.OriginalURL)
-		fmt.Printf("    Domain: %s, Canonical: %s\n", u.Domain, u.CanonicalURL)
+		canonicalURL := u.CanonicalURL.String
+		if !u.CanonicalURL.Valid {
+			canonicalURL = "(none)"
+		}
+		fmt.Printf("    Domain: %s, Canonical: %s\n", u.Domain, canonicalURL)
 	}
 
 	// Print results if available

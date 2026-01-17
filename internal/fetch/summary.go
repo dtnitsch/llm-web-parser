@@ -101,7 +101,8 @@ func BuildSummaryDetails(r Result) SummaryDetails {
 
 	// Visual metadata (boolean/count only)
 	details.HasFavicon = meta.Favicon != ""
-	// TODO: Count images from content blocks when in full-parse mode
+	// NOTE: Image counting currently limited to featured/main image from metadata.
+	// Future enhancement: Parse and count <img> tags from content blocks in full-parse mode.
 	details.ImageCount = 0
 	if meta.Image != "" {
 		details.ImageCount = 1 // At minimum, we have the main image

@@ -154,8 +154,16 @@ func FetchAction(c *cli.Context) error {
 
 	// Parse features flag to determine ParseMode (needed for session lookup)
 	parseMode := ParseFeaturesFlag(c.String("features"))
-	parseModeStr := string(parseMode)
-	logger.Info("Parse mode determined", "mode", parseMode, "features", c.String("features"))
+	parseModeStr := ""
+	switch parseMode {
+	case models.ParseModeMinimal:
+		parseModeStr = "minimal"
+	case models.ParseModeCheap:
+		parseModeStr = "cheap"
+	case models.ParseModeFull:
+		parseModeStr = "full"
+	}
+	logger.Info("Parse mode determined", "mode", parseModeStr, "features", c.String("features"))
 
 	// Find or create session in database
 	outputDir := c.String("output-dir")

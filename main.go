@@ -32,7 +32,7 @@ func main() {
 		},
 		Before: func(c *cli.Context) error {
 			if c.Bool("coldstart") {
-				fmt.Println(help.ColdstartYAML)
+				fmt.Print(help.ColdstartYAML)
 				os.Exit(0)
 			}
 			return nil
