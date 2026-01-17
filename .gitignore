@@ -12,6 +12,7 @@ lwp
 lwp-results/
 lwp-sessions/
 lwp-test
+lwp-test
 
 *.db
 

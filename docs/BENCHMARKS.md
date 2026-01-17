@@ -243,25 +243,16 @@ cd llm-web-parser
 go mod download
 ```
 
-2. **Configure test URLs (config.yaml):**
-```yaml
-urls:
-  - https://en.wikipedia.org/wiki/Machine_learning
-  - https://pytorch.org/docs/stable/index.html
-  - https://www.tensorflow.org/
-  - https://openai.com/research
-  - https://www.anthropic.com/research
-  # ... (add 35 more URLs)
-```
-
-3. **Adjust worker count (main.go):**
-```go
-const numWorkers = 8 // Change this value
-```
-
-4. **Run benchmark:**
+2. **Prepare test URLs:**
+Create a comma-separated list of URLs (40 URLs total for benchmark):
 ```bash
-time ./llm-web-parser
+URLS="https://en.wikipedia.org/wiki/Machine_learning,https://pytorch.org/docs/stable/index.html,https://www.tensorflow.org/,https://openai.com/research,https://www.anthropic.com/research,...(add 35 more)"
+```
+
+3. **Run benchmark:**
+```bash
+# Adjust worker count with --workers flag (default: 8)
+time ./llm-web-parser fetch --urls "$URLS" --workers 8
 ```
 
 5. **Analyze results:**

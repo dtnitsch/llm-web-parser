@@ -168,18 +168,21 @@ Summary mode (roadmap):
 git clone https://github.com/dtnitsch/llm-web-parser.git
 cd llm-web-parser
 go mod download
-# Add URLs to config.yaml
-go run main.go
-# Structured JSON in results/
+go build
+# Fetch URLs with CLI arguments (no config file needed)
+./llm-web-parser fetch --urls "https://example.com"
+# Structured output in llm-web-parser-results/
 ```
 
 ## Roadmap
 
-**Next release (P0):**
+**Completed (v1.0+):**
 
-- CLI arguments (no config.yaml editing)
-- Summary output mode (100x token savings)
-- Extract subcommand (filtered deep-dive)
+- ✅ CLI arguments (standalone tool, no config file needed)
+- ✅ Summary output mode (100x token savings)
+- ✅ Extract subcommand (filtered deep-dive)
+- ✅ Session tracking with SQLite database
+- ✅ Keyword extraction and Corpus API
 
 See `todos.yaml` for full roadmap.
 

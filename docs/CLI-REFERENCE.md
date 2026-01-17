@@ -19,7 +19,6 @@
 | `--output-mode` | | string | `tier2` | Output mode: `tier2`, `summary`, `full`, or `minimal`. tier2 = index to stdout + details file |
 | `--max-age` | | duration | `1h` | Maximum age for cached artifacts (e.g., `24h`, `30m`) |
 | `--force-fetch` | | bool | `false` | Force refetch, ignore cache |
-| `--config` | `-c` | string | `config.yaml` | Path to config file (alternative to `--urls`) |
 | `--output-dir` | | string | `llm-web-parser-results` | Base directory for artifacts |
 | `--summary-version` | | string | `v1` | Summary format: `v1` (verbose) or `v2` (terse, 40% smaller) |
 | `--summary-fields` | | string | `` | Comma-separated fields to include (e.g., `url,tokens,quality`). Empty = all fields |
@@ -39,9 +38,6 @@
 
 # Force refetch ignoring cache
 ./llm-web-parser fetch --urls "https://example.com" --force-fetch
-
-# Use config file instead of --urls
-./llm-web-parser fetch --config my-urls.yaml
 
 # Adjust cache TTL to 24 hours
 ./llm-web-parser fetch --urls "https://example.com" --max-age "24h"
@@ -374,23 +370,6 @@ llm-web-parser-results/
 ├── parsed/
 │   └── example_com-abc123.json     # Structured JSON output
 └── summary-2026-01-10.json         # Daily summary manifest
-```
-
----
-
-## Configuration File (config.yaml)
-
-Alternative to `--urls` flag:
-
-```yaml
-urls:
-  - https://example.com
-  - https://another-example.com
-worker_count: 8
-```
-
-```bash
-./llm-web-parser fetch --config config.yaml
 ```
 
 ---
