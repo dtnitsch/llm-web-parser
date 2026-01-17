@@ -31,6 +31,27 @@ type ErrorInfo struct {
 
 // NewNotImplementedResponse creates a response for unimplemented verbs.
 func NewNotImplementedResponse(verb string) Response {
+	// Provide helpful alternatives based on the verb
+	suggestions := []string{"Check docs/CORPUS-API.md for implementation status"}
+
+	switch verb {
+	case "query":
+		suggestions = []string{
+			"Use 'lwp fetch --filter \"conf:>=0.7\"' for basic filtering",
+			"Check docs/CORPUS-API.md for implementation status",
+		}
+	case "compare", "detect":
+		suggestions = []string{
+			"Try 'lwp corpus extract' for keyword analysis across URLs",
+			"Check docs/CORPUS-API.md for implementation status",
+		}
+	case "ingest":
+		suggestions = []string{
+			"Use 'lwp fetch --urls \"...\"' to fetch and parse URLs",
+			"Check docs/CORPUS-API.md for implementation status",
+		}
+	}
+
 	return Response{
 		Verb:       verb,
 		Data:       nil,
@@ -39,8 +60,8 @@ func NewNotImplementedResponse(verb string) Response {
 		Unknowns:   []string{},
 		Error: &ErrorInfo{
 			Type:             "not_implemented",
-			Message:          verb + " verb not implemented yet",
-			SuggestedActions: []string{"Check docs/CORPUS-API.md for implementation status"},
+			Message:          verb + " not implemented yet. See suggested_actions for alternatives.",
+			SuggestedActions: suggestions,
 		},
 	}
 }

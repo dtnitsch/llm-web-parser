@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
+	"github.com/dtnitsch/llm-web-parser/models"
 	"github.com/dtnitsch/llm-web-parser/pkg/artifact_manager"
 	dbpkg "github.com/dtnitsch/llm-web-parser/pkg/db"
 	"github.com/urfave/cli/v2"
+	"gopkg.in/yaml.v3"
 )
 
 func SessionsAction(c *cli.Context) error {
@@ -311,7 +314,7 @@ func UrlsAction(c *cli.Context) error {
 	return nil
 }
 
-// showAction shows parsed JSON for a URL by ID or URL
+// showAction shows parsed content for a URL by ID or URL
 func ShowAction(c *cli.Context) error {
 	if c.NArg() == 0 {
 		return fmt.Errorf("URL ID or URL required\nUsage: lwp db show <url_id_or_url>\nExample: lwp db show 123 OR lwp db show 6,7,8 OR lwp db show https://example.com")
@@ -337,59 +340,97 @@ func ShowAction(c *cli.Context) error {
 
 		for _, id := range ids {
 			id = strings.TrimSpace(id)
-			url, err := ResolveURLFromIDOrURL(id, database)
+			urlID, err := ResolveURLID(id, database)
 			if err != nil {
 				return fmt.Errorf("failed to resolve ID %s: %w", id, err)
 			}
 
-			filePath, err := manager.GetArtifactPath(artifact_manager.ParsedJSONDir, url, ".json")
+			data, found, err := manager.GetParsedJSONByID(urlID)
 			if err != nil {
-				return fmt.Errorf("failed to get artifact path for %s: %w", url, err)
+				return fmt.Errorf("failed to read parsed content for URL ID %d: %w", urlID, err)
 			}
-
-			data, err := os.ReadFile(filepath.Clean(filePath))
-			if err != nil {
-				if os.IsNotExist(err) {
-					return fmt.Errorf("parsed JSON not found for URL: %s\n\nThis URL may not have been fetched yet. Try:\n  lwp fetch --urls \"%s\"", url, url)
-				}
-				return fmt.Errorf("failed to read file for %s: %w", url, err)
+			if !found {
+				url, _ := database.GetURLByID(urlID)
+				return fmt.Errorf("parsed content not found for URL ID %d (%s)\n\nThis URL may not have been fetched yet. Try:\n  lwp fetch --urls \"%s\"", urlID, url, url)
 			}
 
 			results = append(results, string(data))
 		}
 
-		// Print results as JSON array
-		fmt.Print("[\n")
+		// Print results (YAML format from storage)
+		fmt.Println("# YAML compact mode: Only non-null/non-default fields shown")
 		for i, result := range results {
-			fmt.Print(result)
-			if i < len(results)-1 {
-				fmt.Print(",\n")
+			if i > 0 {
+				fmt.Print("\n---\n\n")
 			}
+			fmt.Print(result)
 		}
-		fmt.Print("\n]\n")
 		return nil
 	}
 
 	// Single URL/ID mode
-	url, err := ResolveURLFromIDOrURL(arg, database)
+	urlID, err := ResolveURLID(arg, database)
 	if err != nil {
 		return err
 	}
 
-	filePath, err := manager.GetArtifactPath(artifact_manager.ParsedJSONDir, url, ".json")
+	data, found, err := manager.GetParsedJSONByID(urlID)
 	if err != nil {
-		return fmt.Errorf("failed to get artifact path: %w", err)
+		return fmt.Errorf("failed to read parsed content: %w", err)
+	}
+	if !found {
+		url, _ := database.GetURLByID(urlID)
+		return fmt.Errorf("parsed content not found for URL ID %d (%s)\n\nThis URL may not have been fetched yet. Try:\n  lwp fetch --urls \"%s\"", urlID, url, url)
 	}
 
-	data, err := os.ReadFile(filepath.Clean(filePath))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("parsed JSON not found for URL: %s\n\nThis URL may not have been fetched yet. Try:\n  lwp fetch --urls \"%s\"", url, url)
+	// Always parse YAML to apply compact marshaling and enable filters
+	var page models.Page
+	if err := yaml.Unmarshal(data, &page); err != nil {
+		return fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	// Check for filter flags
+	outlineMode := c.Bool("outline")
+	onlyTypes := c.String("only")
+	grepPattern := c.String("grep")
+	grepContext := c.Int("context")
+
+	// Apply outline filter (special output)
+	if outlineMode {
+		fmt.Print(filterOutline(&page))
+		return nil
+	}
+
+	// Apply type filter
+	if onlyTypes != "" {
+		filtered, err := filterByType(&page, onlyTypes)
+		if err != nil {
+			return err
 		}
-		return fmt.Errorf("failed to read file: %w", err)
+		page = *filtered
 	}
 
-	fmt.Print(string(data))
+	// Apply grep filter
+	if grepPattern != "" {
+		filtered, err := filterByGrep(&page, grepPattern, grepContext)
+		if err != nil {
+			return err
+		}
+		page = *filtered
+	}
+
+	// Re-marshal with compact format
+	compactData, err := yaml.Marshal(&page)
+	if err != nil {
+		return fmt.Errorf("failed to marshal content: %w", err)
+	}
+
+	if onlyTypes != "" || grepPattern != "" {
+		fmt.Println("# YAML compact mode: Only non-null/non-default fields shown (filtered)")
+	} else {
+		fmt.Println("# YAML compact mode: Only non-null/non-default fields shown")
+	}
+	fmt.Print(string(compactData))
 	return nil
 }
 
@@ -418,22 +459,18 @@ func RawAction(c *cli.Context) error {
 
 		for i, id := range ids {
 			id = strings.TrimSpace(id)
-			url, err := ResolveURLFromIDOrURL(id, database)
+			urlID, err := ResolveURLID(id, database)
 			if err != nil {
 				return fmt.Errorf("failed to resolve ID %s: %w", id, err)
 			}
 
-			filePath, err := manager.GetArtifactPath(artifact_manager.RawHTMLDir, url, ".html")
+			data, found, err := manager.GetRawHTMLByID(urlID)
 			if err != nil {
-				return fmt.Errorf("failed to get artifact path for %s: %w", url, err)
+				return fmt.Errorf("failed to read raw HTML for URL ID %d: %w", urlID, err)
 			}
-
-			data, err := os.ReadFile(filepath.Clean(filePath))
-			if err != nil {
-				if os.IsNotExist(err) {
-					return fmt.Errorf("raw HTML not found for URL: %s\n\nThis URL may not have been fetched yet. Try:\n  lwp fetch --urls \"%s\"", url, url)
-				}
-				return fmt.Errorf("failed to read file for %s: %w", url, err)
+			if !found {
+				url, _ := database.GetURLByID(urlID)
+				return fmt.Errorf("raw HTML not found for URL ID %d (%s)\n\nThis URL may not have been fetched yet. Try:\n  lwp fetch --urls \"%s\"", urlID, url, url)
 			}
 
 			if i > 0 {
@@ -445,22 +482,18 @@ func RawAction(c *cli.Context) error {
 	}
 
 	// Single URL/ID mode
-	url, err := ResolveURLFromIDOrURL(arg, database)
+	urlID, err := ResolveURLID(arg, database)
 	if err != nil {
 		return err
 	}
 
-	filePath, err := manager.GetArtifactPath(artifact_manager.RawHTMLDir, url, ".html")
+	data, found, err := manager.GetRawHTMLByID(urlID)
 	if err != nil {
-		return fmt.Errorf("failed to get artifact path: %w", err)
+		return fmt.Errorf("failed to read raw HTML: %w", err)
 	}
-
-	data, err := os.ReadFile(filepath.Clean(filePath))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("raw HTML not found for URL: %s\n\nThis URL may not have been fetched yet. Try:\n  lwp fetch --urls \"%s\"", url, url)
-		}
-		return fmt.Errorf("failed to read file: %w", err)
+	if !found {
+		url, _ := database.GetURLByID(urlID)
+		return fmt.Errorf("raw HTML not found for URL ID %d (%s)\n\nThis URL may not have been fetched yet. Try:\n  lwp fetch --urls \"%s\"", urlID, url, url)
 	}
 
 	fmt.Print(string(data))
@@ -486,4 +519,94 @@ func FindURLAction(c *cli.Context) error {
 
 	fmt.Printf("[#%d] %s\n", urlID, url)
 	return nil
+}
+
+// filterOutline extracts headings from a Page and builds a hierarchical outline.
+func filterOutline(page *models.Page) string {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("url: %s\n", page.URL))
+	sb.WriteString(fmt.Sprintf("title: %s\n\n", page.Title))
+	sb.WriteString("outline:\n")
+
+	// Extract headings from flatcontent
+	for _, block := range page.FlatContent {
+		// Check if it's a heading (h1, h2, h3)
+		if strings.HasPrefix(block.Type, "h") && len(block.Type) == 2 {
+			level := block.Type[1] - '0' // Convert '1', '2', '3' to int
+			if level >= 1 && level <= 3 {
+				indent := strings.Repeat("  ", int(level)-1)
+				sb.WriteString(fmt.Sprintf("%s- %s (%s)\n", indent, block.Text, block.Type))
+			}
+		}
+	}
+
+	return sb.String()
+}
+
+// filterByType filters ContentBlocks by type (comma-separated list).
+func filterByType(page *models.Page, types string) (*models.Page, error) {
+	if types == "" {
+		return page, nil
+	}
+
+	typeList := strings.Split(types, ",")
+	typeMap := make(map[string]bool)
+	for _, t := range typeList {
+		typeMap[strings.TrimSpace(t)] = true
+	}
+
+	filtered := &models.Page{
+		URL:   page.URL,
+		Title: page.Title,
+		FlatContent: make([]models.ContentBlock, 0),
+	}
+
+	for _, block := range page.FlatContent {
+		if typeMap[block.Type] {
+			filtered.FlatContent = append(filtered.FlatContent, block)
+		}
+	}
+
+	return filtered, nil
+}
+
+// filterByGrep searches for a pattern in ContentBlocks and includes context.
+func filterByGrep(page *models.Page, pattern string, context int) (*models.Page, error) {
+	if pattern == "" {
+		return page, nil
+	}
+
+	re, err := regexp.Compile("(?i)" + pattern) // Case-insensitive
+	if err != nil {
+		return nil, fmt.Errorf("invalid regex pattern: %w", err)
+	}
+
+	filtered := &models.Page{
+		URL:   page.URL,
+		Title: page.Title,
+		FlatContent: make([]models.ContentBlock, 0),
+	}
+
+	// Find all matching indices
+	matches := make(map[int]bool)
+	for i, block := range page.FlatContent {
+		if re.MatchString(block.Text) {
+			// Mark this block and context blocks
+			for j := i - context; j <= i+context; j++ {
+				if j >= 0 && j < len(page.FlatContent) {
+					matches[j] = true
+				}
+			}
+		}
+	}
+
+	// Add all matched blocks (in order)
+	for i, block := range page.FlatContent {
+		if matches[i] {
+			filtered.FlatContent = append(filtered.FlatContent, block)
+		}
+	}
+
+	return filtered, nil
 }

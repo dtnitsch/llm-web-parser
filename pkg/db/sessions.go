@@ -431,6 +431,9 @@ type URLWithMetadata struct {
 
 	// Keywords (top 5 for display)
 	TopKeywords []string
+
+	// Session-specific data
+	EstimatedTokens int
 }
 
 // GetSessionURLsWithSanitization retrieves URLs for a session with sanitization info
@@ -481,14 +484,16 @@ func (db *DB) GetSessionURLsWithMetadata(sessionID int64) ([]URLWithMetadata, er
 			COALESCE(u.section_count, 0),
 			COALESCE(u.citation_count, 0),
 			COALESCE(u.code_block_count, 0),
-			COALESCE(u.top_keywords, '[]')
+			COALESCE(u.top_keywords, '[]'),
+			COALESCE(sr.estimated_tokens, 0)
 		FROM urls u
 		JOIN session_urls su ON u.url_id = su.url_id
+		LEFT JOIN session_results sr ON u.url_id = sr.url_id AND sr.session_id = ?
 		WHERE su.session_id = ?
 		ORDER BY su.id
 	`
 
-	rows, err := db.Query(query, sessionID)
+	rows, err := db.Query(query, sessionID, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session URLs with metadata: %w", err)
 	}
@@ -516,6 +521,7 @@ func (db *DB) GetSessionURLsWithMetadata(sessionID int64) ([]URLWithMetadata, er
 			&u.CitationCount,
 			&u.CodeBlockCount,
 			&topKeywordsJSON,
+			&u.EstimatedTokens,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan URL metadata: %w", err)

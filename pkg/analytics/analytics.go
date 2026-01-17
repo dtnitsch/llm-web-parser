@@ -99,6 +99,24 @@ var commonWords = map[string]struct{}{
 
 	"yet": {}, "you": {}, "you'd": {}, "you'll": {}, "you're": {},
 	"you've": {}, "your": {}, "yours": {}, "yourself": {}, "yourselves": {},
+
+	// Additional contractions and variants
+	"ain't": {}, "it'll": {}, "shan't": {}, "that'll": {}, "when's": {},
+
+	// Common web/UI noise words
+	"click": {}, "clickable": {}, "clicked": {}, "clicking": {},
+	"button": {}, "link": {}, "menu": {},
+	"redirected": {}, "redirect": {}, "redirecting": {},
+	"page": {}, "pages": {}, "website": {}, "site": {},
+	"home": {}, "homepage": {},
+	"search": {}, "searching": {}, "searched": {},
+	"loading": {}, "loaded": {}, "load": {}, "loads": {},
+}
+
+// IsStopword checks if a word is a common stopword that should be filtered out.
+func IsStopword(word string) bool {
+	_, exists := commonWords[strings.ToLower(word)]
+	return exists
 }
 
 func (a *Analytics) WordFrequency(text string) map[string]int {

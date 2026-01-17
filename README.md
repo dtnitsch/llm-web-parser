@@ -4,6 +4,21 @@
 
 Extract clean metadata from web pages in minimal mode (fast) or full content with confidence scoring (thorough). Built for LLM workflows with token-efficient YAML output and smart session management.
 
+## What Works Right Now
+
+✅ **Core Features (Stable)**
+- Fetch & parse URLs (minimal, wordcount, full-parse modes)
+- Session management & URL ID system
+- Database operations (sessions, urls, show, raw, find-url, **path**)
+- Keyword extraction (`corpus extract`)
+- Query suggestions (`corpus suggest`)
+
+⏳ **Planned Features**
+- Advanced corpus verbs (query, compare, detect, normalize, trace, score, delta, summarize)
+- See `docs/CORPUS-API.md` for roadmap
+
+📚 **Quick Start**: See `examples/` directory for ready-to-run workflows
+
 ## Features
 
 - **Zero-config setup** - Auto-initializes database, just run it
@@ -36,6 +51,16 @@ go build
 ```
 
 **That's it!** No configuration needed. Database and results auto-initialize.
+
+## For LLMs
+
+**Complete command reference:** See [`docs/development/index.yaml`](docs/development/index.yaml)
+
+- **Start here:** Read `index.yaml` for overview and structure
+- **Detailed examples:** Consult `fetch.md`, `db.md`, `corpus.md` for specific commands
+- **Quick search:** Use grep to find patterns (index shows grep hints)
+
+All commands with combined examples, workflows, and implementation status.
 
 ## Core Workflows
 
@@ -188,8 +213,10 @@ llm-web-parser db get --file=details | yq '.[] | select(.has_doi and .academic_s
 
 ## Parse Modes
 
-### Minimal Mode (Default)
-**Fast metadata extraction** - ~150 bytes/URL, perfect for initial scans
+### Minimal Mode
+**Metadata-only extraction** - Fastest, but NO keyword extraction
+
+Use when you only need basic metadata and don't care about content topics.
 
 Fields extracted:
 - `title`, `excerpt`, `site_name`, `author`, `published_at`
@@ -201,10 +228,34 @@ Fields extracted:
 - Content metrics: `word_count`, `estimated_tokens`, `read_time_min`
 - Language: `language`, `language_confidence`
 
+Usage:
+```bash
+llm-web-parser fetch --urls "..." --features minimal
+```
+
+### Wordcount Mode (Default)
+**Metadata + keyword extraction** - Recommended for LLM workflows
+
+Same as minimal mode, plus generates top keywords for each URL. Adds ~1 second per URL.
+
+Use this to understand what each URL is about before deciding which to deep-dive.
+
+Usage:
+```bash
+# Default behavior (wordcount is implicit)
+llm-web-parser fetch --urls "..."
+
+# Explicit
+llm-web-parser fetch --urls "..." --features wordcount
+
+# Then extract keywords
+llm-web-parser corpus extract --session 1
+```
+
 ### Full-Parse Mode
 **Complete content extraction** with confidence scoring
 
-Additional extraction:
+Everything from wordcount mode, plus:
 - Full text content blocks with confidence scores
 - Section structure and headings
 - Block-level content typing (paragraph, code, table, list, etc.)
@@ -277,9 +328,10 @@ llm-web-parser fetch --urls "..." --format json
 ## Environment
 
 **Database location:**
-- Stored next to binary: `./llm-web-parser.db`
+- Stored in current working directory: `./llm-web-parser.db`
 - Auto-creates on first use
 - SQLite with WAL mode for performance
+- Find location with: `llm-web-parser db path`
 
 **Results directory:**
 - Default: `./llm-web-parser-results/`

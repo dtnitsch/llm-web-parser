@@ -55,8 +55,8 @@ func main() {
    llm-web-parser fetch --urls "..." --features full-parse --filter "conf:>=0.7"
 
 FEATURES:
-   minimal (default)   - Metadata only. Fast but NO keywords (can't see what URLs are about)
-   wordcount          - Adds keyword extraction (~1s extra). Shows top keywords per URL
+   minimal            - Metadata only. Fast but NO keywords (can't see what URLs are about)
+   wordcount (default) - Adds keyword extraction (~1s extra). Shows top keywords per URL
    full-parse         - Full content + keywords. Use for deep content analysis
 
 NOTES:
@@ -141,6 +141,7 @@ NOTES:
 			{
 				Name:   "extract",
 				Usage:  "DEPRECATED: Use 'fetch --filter' instead",
+				Hidden: true,
 				Action: analyze.ExtractAction,
 				Flags: []cli.Flag{
 					&cli.StringSliceFlag{
@@ -158,6 +159,7 @@ NOTES:
 			{
 				Name:   "analyze",
 				Usage:  "DEPRECATED: Use 'fetch' instead (auto-detects cache)",
+				Hidden: true,
 				Action: analyze.AnalyzeAction,
 				Flags: []cli.Flag{
 					&cli.StringFlag{
@@ -206,6 +208,20 @@ NOTES:
 							}
 
 							fmt.Printf("Database initialized at: %s\n", database.Path())
+							return nil
+						},
+					},
+					{
+						Name:  "path",
+						Usage: "Show database file location",
+						Action: func(c *cli.Context) error {
+							database, err := dbpkg.Open()
+							if err != nil {
+								return fmt.Errorf("failed to open database: %w", err)
+							}
+							defer database.Close()
+
+							fmt.Println(database.Path())
 							return nil
 						},
 					},
@@ -273,20 +289,71 @@ NOTES:
 					},
 					{
 						Name:      "show",
-						Usage:     "Show parsed JSON for a URL (by ID or URL)",
+						Usage:     "Show parsed content for a URL (by ID or URL)",
 						ArgsUsage: "<url_id_or_url>",
-						Action:    db.ShowAction,
+						Description: `EXAMPLES:
+   # By URL ID (most efficient - saves tokens)
+   llm-web-parser db show 42
+
+   # Get just the outline (headings)
+   llm-web-parser db show 42 --outline
+
+   # Filter by content type (code blocks only)
+   llm-web-parser db show 42 --only=code,pre
+
+   # Search for specific pattern with context
+   llm-web-parser db show 42 --grep="async" --context=3
+
+   # Batch retrieve (comma-separated IDs)
+   llm-web-parser db show 42,43,44
+
+NOTE: Use 'llm-web-parser db urls' to see URL IDs for the latest session.`,
+						Flags: []cli.Flag{
+							&cli.BoolFlag{
+								Name:  "outline",
+								Usage: "Show document outline (headings only)",
+							},
+							&cli.StringFlag{
+								Name:  "only",
+								Usage: "Filter by block type (comma-separated: code,pre,h1,h2,p)",
+							},
+							&cli.StringFlag{
+								Name:  "grep",
+								Usage: "Search for pattern in content (regex supported)",
+							},
+							&cli.IntFlag{
+								Name:  "context",
+								Usage: "Number of blocks to show before/after grep matches",
+								Value: 3,
+							},
+						},
+						Action: db.ShowAction,
 					},
 					{
 						Name:      "raw",
 						Usage:     "Show raw HTML for a URL (by ID or URL)",
 						ArgsUsage: "<url_id_or_url>",
+						Description: `EXAMPLES:
+   # By URL ID
+   llm-web-parser db raw 42
+
+   # By full URL
+   llm-web-parser db raw https://golang.org
+
+NOTE: This shows the cached HTML. Use 'llm-web-parser db urls' to find URL IDs.`,
 						Action:    db.RawAction,
 					},
 					{
 						Name:      "find-url",
 						Usage:     "Find the URL ID for a given URL",
 						ArgsUsage: "<url>",
+						Description: `EXAMPLES:
+   llm-web-parser db find-url https://golang.org
+   # Output: [#42] https://golang.org
+
+   # Then use the ID for efficient access:
+   llm-web-parser db show 42
+   llm-web-parser db raw 42`,
 						Action:    db.FindURLAction,
 					},
 				},
@@ -297,7 +364,7 @@ NOTES:
 				Subcommands: []*cli.Command{
 					{
 						Name:   "extract",
-						Usage:  "Extract and aggregate keywords from URLs",
+						Usage:  "[WORKING] Extract and aggregate keywords from URLs",
 						Action: corpusactions.CorpusAction,
 						Flags: []cli.Flag{
 							&cli.IntFlag{Name: "session", Usage: "Session ID (extract keywords from all URLs in session)"},
@@ -308,7 +375,7 @@ NOTES:
 					},
 					{
 						Name:   "query",
-						Usage:  "Boolean filtering over metadata",
+						Usage:  "[NOT IMPLEMENTED] Boolean filtering over metadata",
 						Action: corpusactions.CorpusAction,
 						Flags: []cli.Flag{
 							&cli.StringFlag{Name: "filter", Usage: "Filter expression (e.g., 'has_code AND citations>50')"},
@@ -319,7 +386,7 @@ NOTES:
 					},
 					{
 						Name:   "compare",
-						Usage:  "Cross-document analysis (consensus, contradictions, approaches)",
+						Usage:  "[NOT IMPLEMENTED] Cross-document analysis (consensus, contradictions, approaches)",
 						Action: corpusactions.CorpusAction,
 						Flags: []cli.Flag{
 							&cli.IntFlag{Name: "session", Usage: "Session ID"},
@@ -329,7 +396,7 @@ NOTES:
 					},
 					{
 						Name:   "detect",
-						Usage:  "Pattern recognition (clusters, warnings, gaps, anomalies, trends)",
+						Usage:  "[NOT IMPLEMENTED] Pattern recognition (clusters, warnings, gaps, anomalies, trends)",
 						Action: corpusactions.CorpusAction,
 						Flags: []cli.Flag{
 							&cli.IntFlag{Name: "session", Usage: "Session ID"},
@@ -339,7 +406,7 @@ NOTES:
 					},
 					{
 						Name:   "normalize",
-						Usage:  "Canonicalize entities, dates, versions, code",
+						Usage:  "[NOT IMPLEMENTED] Canonicalize entities, dates, versions, code",
 						Action: corpusactions.CorpusAction,
 						Flags: []cli.Flag{
 							&cli.IntFlag{Name: "session", Usage: "Session ID"},
@@ -349,7 +416,7 @@ NOTES:
 					},
 					{
 						Name:   "trace",
-						Usage:  "Citation graphs, authority scoring, provenance",
+						Usage:  "[NOT IMPLEMENTED] Citation graphs, authority scoring, provenance",
 						Action: corpusactions.CorpusAction,
 						Flags: []cli.Flag{
 							&cli.IntFlag{Name: "session", Usage: "Session ID"},
@@ -359,7 +426,7 @@ NOTES:
 					},
 					{
 						Name:   "score",
-						Usage:  "Confidence and quality metrics",
+						Usage:  "[NOT IMPLEMENTED] Confidence and quality metrics",
 						Action: corpusactions.CorpusAction,
 						Flags: []cli.Flag{
 							&cli.IntFlag{Name: "session", Usage: "Session ID"},
@@ -369,7 +436,7 @@ NOTES:
 					},
 					{
 						Name:   "delta",
-						Usage:  "Incremental updates (what changed since baseline)",
+						Usage:  "[NOT IMPLEMENTED] Incremental updates (what changed since baseline)",
 						Action: corpusactions.CorpusAction,
 						Flags: []cli.Flag{
 							&cli.IntFlag{Name: "session", Usage: "Session ID"},
@@ -379,7 +446,7 @@ NOTES:
 					},
 					{
 						Name:   "summarize",
-						Usage:  "Structured synthesis (decision-inputs, timelines, matrices)",
+						Usage:  "[NOT IMPLEMENTED] Structured synthesis (decision-inputs, timelines, matrices)",
 						Action: corpusactions.CorpusAction,
 						Flags: []cli.Flag{
 							&cli.IntFlag{Name: "session", Usage: "Session ID"},
@@ -389,7 +456,7 @@ NOTES:
 					},
 					{
 						Name:   "suggest",
-						Usage:  "Suggest queries based on session contents",
+						Usage:  "[WORKING] Suggest queries based on session contents",
 						Action: corpusactions.SuggestAction,
 						Flags: []cli.Flag{
 							&cli.IntFlag{Name: "session", Usage: "Session ID", Required: true},
@@ -397,7 +464,7 @@ NOTES:
 					},
 					{
 						Name:   "explain-failure",
-						Usage:  "Diagnostic transparency for low confidence / failures",
+						Usage:  "[NOT IMPLEMENTED] Diagnostic transparency for low confidence / failures",
 						Action: corpusactions.CorpusAction,
 						Flags: []cli.Flag{
 							&cli.IntFlag{Name: "session", Usage: "Session ID"},

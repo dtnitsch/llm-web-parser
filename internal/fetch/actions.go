@@ -307,14 +307,55 @@ func FetchAction(c *cli.Context) error {
 			fmt.Printf("\nMore: lwp corpus suggest --session=%d\n", sessionID)
 		}
 
-		// Show URL IDs unless --quiet flag is set
+		// Show enhanced URL display unless --quiet flag is set
 		if !c.Bool("quiet") {
-			urlsWithSanitization, err := database.GetSessionURLsWithSanitization(sessionID)
-			if err == nil && len(urlsWithSanitization) > 0 {
-				fmt.Printf("\nURL IDs:\n")
-				for i, u := range urlsWithSanitization {
-					fmt.Printf("  %d. [#%d] %s\n", i+1, u.URLID, u.URL)
+			urlsWithMetadata, err := database.GetSessionURLsWithMetadata(sessionID)
+			if err == nil && len(urlsWithMetadata) > 0 {
+				fmt.Printf("\n")
+				for _, u := range urlsWithMetadata {
+					// Line 1: URL ID and URL
+					fmt.Printf("[#%d] %s\n", u.URLID, u.URL)
+
+					// Line 2: Metadata (subtype | code:N conf:X.X tokens:Nk [cites:N])
+					metadata := u.ContentSubtype
+					if metadata == "" {
+						metadata = u.ContentType
+					}
+					if metadata == "" || metadata == "unknown" {
+						metadata = "unknown"
+					}
+					if u.CodeBlockCount > 0 {
+						metadata += fmt.Sprintf(" | code:%d", u.CodeBlockCount)
+					}
+					metadata += fmt.Sprintf(" conf:%.1f", u.DetectionConfidence)
+					if u.EstimatedTokens > 0 {
+						if u.EstimatedTokens >= 1000 {
+							metadata += fmt.Sprintf(" tokens:%.1fk", float64(u.EstimatedTokens)/1000)
+						} else {
+							metadata += fmt.Sprintf(" tokens:%d", u.EstimatedTokens)
+						}
+					}
+					if u.CitationCount > 0 {
+						metadata += fmt.Sprintf(" cites:%d", u.CitationCount)
+					}
+					fmt.Printf("      %s\n", metadata)
+
+					// Line 3: Top 5 keywords (comma-separated)
+					if len(u.TopKeywords) > 0 {
+						keywords := u.TopKeywords
+						if len(keywords) > 5 {
+							keywords = keywords[:5]
+						}
+						fmt.Printf("      %s\n", strings.Join(keywords, ", "))
+					}
+
+					// Line 4: Copy-paste ready command
+					fmt.Printf("      → lwp db show %d\n", u.URLID)
+					fmt.Printf("\n")
 				}
+
+				// Link to development docs
+				fmt.Printf("📖 Command reference: docs/development/index.yaml\n")
 			}
 		}
 
@@ -324,13 +365,6 @@ func FetchAction(c *cli.Context) error {
 			fmt.Printf("\nNote: %d URL(s) were auto-cleaned\n", sanitizedCount)
 			fmt.Printf("  To see what changed: lwp db urls %d --sanitized\n", sessionID)
 		}
-
-		// Show tip about using URL IDs and common commands
-		fmt.Printf("\nCommands:\n")
-		fmt.Printf("  lwp db get --file=details %d  # Full session YAML\n", sessionID)
-		fmt.Printf("  lwp db urls %d                # List URL IDs\n", sessionID)
-		fmt.Printf("  lwp db show <id>              # Get parsed content\n")
-		fmt.Printf("  lwp db raw <id>               # Get raw HTML\n")
 
 		return nil
 	case "summary":

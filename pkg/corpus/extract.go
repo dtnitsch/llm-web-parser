@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/dtnitsch/llm-web-parser/models"
+	"github.com/dtnitsch/llm-web-parser/pkg/analytics"
 	"github.com/dtnitsch/llm-web-parser/pkg/artifact_manager"
 )
 
@@ -199,6 +200,16 @@ func aggregateKeywordsFromFiles(urlIDs []int64) (map[string]int, int, error) {
 			word := parts[0]
 			count, err := strconv.Atoi(parts[1])
 			if err != nil {
+				continue
+			}
+
+			// Normalize curly apostrophes to straight apostrophes
+			// (legacy wordcount files may contain Unicode U+2019 instead of ASCII ')
+			word = strings.ReplaceAll(word, "\u2019", "'")  // U+2019 (right single quote) → '
+			word = strings.ReplaceAll(word, "\u2018", "'")  // U+2018 (left single quote) → '
+
+			// Filter out stopwords (safety net for legacy wordcount files)
+			if analytics.IsStopword(word) {
 				continue
 			}
 

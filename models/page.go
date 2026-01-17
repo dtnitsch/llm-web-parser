@@ -76,12 +76,51 @@ type ContentBlock struct {
 	Code  *Code  `json:"code,omitempty"`
 
 	// extracted links scoped to this block
-	Links []Link `json:"links,omitempty"`	
+	Links []Link `json:"links,omitempty"`
 
 	// LLM confidence Scores
 	Confidence float64 `json:"confidence"`
 }
 
+// MarshalYAML creates a compact YAML representation by omitting null/empty/default fields.
+// This reduces token waste by ~75% for LLM consumption.
+func (cb ContentBlock) MarshalYAML() (interface{}, error) {
+	// Create map with only non-null, non-default fields
+	m := make(map[string]interface{})
+
+	// Always include type (required field)
+	m["type"] = cb.Type
+
+	// Include text if not empty
+	if cb.Text != "" {
+		m["text"] = cb.Text
+	}
+
+	// Include table only if present
+	if cb.Table != nil {
+		m["table"] = cb.Table
+	}
+
+	// Include code only if present
+	if cb.Code != nil {
+		m["code"] = cb.Code
+	}
+
+	// Include links only if non-empty
+	if len(cb.Links) > 0 {
+		m["links"] = cb.Links
+	}
+
+	// Include confidence only if not default (0.5)
+	// Float comparison: check if not within epsilon of 0.5
+	if cb.Confidence < 0.49 || cb.Confidence > 0.51 {
+		m["confidence"] = cb.Confidence
+	}
+
+	// Note: ID is intentionally omitted (sequential IDs not useful for LLM reading)
+
+	return m, nil
+}
 
 // ToPlainText flattens the document into readable text.
 func (p *Page) ToPlainText() string {

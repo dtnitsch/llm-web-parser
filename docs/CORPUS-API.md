@@ -30,17 +30,33 @@ The Corpus API provides 11 semantic verbs for operating on collections of parsed
 }
 ```
 
+## Implementation Status
+
+| Verb | Status | Notes |
+|------|--------|-------|
+| EXTRACT | ✅ Working | Keyword aggregation across URLs |
+| SUGGEST | ✅ Working | Query suggestions for sessions |
+| INGEST | ⏳ Planned | Use `lwp fetch` instead |
+| NORMALIZE | ⏳ Planned | Entity canonicalization |
+| COMPARE | ⏳ Planned | Cross-document analysis |
+| DETECT | ⏳ Planned | Pattern recognition |
+| TRACE | ⏳ Planned | Citation graphs |
+| SCORE | ⏳ Planned | Confidence metrics |
+| QUERY | ⏳ Planned | Use `lwp fetch --filter` instead |
+| DELTA | ⏳ Planned | Incremental updates |
+| SUMMARIZE | ⏳ Planned | Structured synthesis |
+
 ## The 11 Verbs
 
 ### 1. INGEST
 **Purpose:** Fetch and parse URLs into corpus
-**Status:** Not implemented
+**Status:** ⏳ Planned (use `lwp fetch` instead)
 **Example:** `lwp corpus ingest --urls="url1,url2"`
 
 ### 2. EXTRACT
-**Purpose:** Schema-driven extraction (code, tables, definitions, etc.)
-**Status:** Not implemented
-**Example:** `lwp corpus extract --schema=Code --session=1`
+**Purpose:** Keyword aggregation across URLs
+**Status:** ✅ **WORKING**
+**Example:** `lwp corpus extract --session=1 --top=25`
 
 **Schemas (v1.0):**
 - Code (language, content, line_numbers)
