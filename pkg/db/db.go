@@ -25,7 +25,7 @@ func openDB(dbPath string) (*sql.DB, error) {
 
 	// Enable foreign keys
 	if _, err := sqlDB.Exec("PRAGMA foreign_keys = ON"); err != nil {
-		sqlDB.Close()
+		_ = sqlDB.Close() // Close error less important than PRAGMA error
 		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
 	}
 
@@ -55,7 +55,7 @@ func Open() (*DB, error) {
 
 	// Auto-initialize schema if it doesn't exist
 	if err := db.ensureSchemaExists(); err != nil {
-		db.Close()
+		_ = db.Close() // Close error less important than schema error
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 

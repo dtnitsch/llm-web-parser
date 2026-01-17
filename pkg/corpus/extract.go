@@ -174,7 +174,8 @@ func aggregateKeywordsFromFiles(urlIDs []int64) (map[string]int, int, error) {
 		)
 
 		// Read and parse wordcount.txt
-		file, err := os.Open(wordcountPath)
+		// Path is safe: constructed from constant base dir + database ID, not user input
+		file, err := os.Open(filepath.Clean(wordcountPath)) // #nosec G304
 		if err != nil {
 			// File might not exist for this URL (parse failure, etc.)
 			// Skip silently and continue
@@ -205,7 +206,8 @@ func aggregateKeywordsFromFiles(urlIDs []int64) (map[string]int, int, error) {
 			fileHasData = true
 		}
 
-		file.Close()
+		// Close file - error ignored as we've already read the data we need
+		_ = file.Close() // #nosec G104
 
 		if err := scanner.Err(); err != nil {
 			// Log error but continue with other files

@@ -71,6 +71,8 @@ func WriteMetadataFile(db *dbpkg.DB, urlID int64, baseDir string) error {
 	metadataPath := filepath.Join(baseDir, fmt.Sprintf("%d", urlID), "metadata.yaml")
 
 	// Ensure directory exists
+	// Artifact directories store public data, standard directory permissions (0755) are appropriate
+	// #nosec G301
 	if err := os.MkdirAll(filepath.Dir(metadataPath), 0755); err != nil {
 		return fmt.Errorf("failed to create metadata directory: %w", err)
 	}
@@ -82,6 +84,8 @@ func WriteMetadataFile(db *dbpkg.DB, urlID int64, baseDir string) error {
 	}
 
 	// Write file
+	// Metadata files contain public data, standard file permissions (0644) are appropriate
+	// #nosec G306
 	if err := os.WriteFile(metadataPath, yamlBytes, 0644); err != nil {
 		return fmt.Errorf("failed to write metadata file: %w", err)
 	}

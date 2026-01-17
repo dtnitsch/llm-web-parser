@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"time"
@@ -21,7 +22,7 @@ func (db *DB) InsertURL(rawURL string) (int64, error) {
 	if err == nil {
 		return existingID, nil
 	}
-	if err != sql.ErrNoRows {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, fmt.Errorf("failed to check existing URL: %w", err)
 	}
 
@@ -92,7 +93,7 @@ func (db *DB) InsertArtifact(urlID int64, typeID int64, contentHash, filePath st
 		}
 		return existingID, nil
 	}
-	if err != sql.ErrNoRows {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, fmt.Errorf("failed to check existing artifact: %w", err)
 	}
 

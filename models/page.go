@@ -215,24 +215,6 @@ func (p *Page) AllTextBlocks() []ContentBlock {
 	walkSections(p.Content)
 	return blocks
 }
-
-
-
-func countBlocksByType(p *Page, types ...string) int {
-	set := make(map[string]struct{}, len(types))
-	for _, t := range types {
-		set[t] = struct{}{}
-	}
-
-	count := 0
-	for _, b := range p.allBlocks() {
-		if _, ok := set[b.Type]; ok {
-			count++
-		}
-	}
-	return count
-}
-
 func (p *Page) detectLanguage(text string) (string, float64) {
 	if len(text) < 100 {
 		return "unknown", 0.0
@@ -264,61 +246,4 @@ func (p *Page) detectLanguage(text string) (string, float64) {
 	}
 
 	return strings.ToLower(iso), confidence
-}
-
-func detectContentType(p *Page) string {
-	score := map[string]int{
-		"documentation": 0,
-		"article":       0,
-		"landing":       0,
-	}
-
-	// Size signals
-	if p.Metadata.WordCount > 1200 {
-		score["article"] += 2
-	}
-	if p.Metadata.WordCount < 500 {
-		score["landing"] += 2
-	}
-
-	// Structure
-	if p.Metadata.SectionCount >= 8 {
-		score["article"] += 2
-	}
-	if p.Metadata.SectionCount <= 2 {
-		score["landing"]++
-	}
-
-	// Code density
-	if countBlocksByType(p, "code", "pre") > 5 {
-		score["documentation"] += 3
-	}
-
-	// Tables
-	if countBlocksByType(p, "table") > 0 {
-		score["documentation"]++
-	}
-
-	// Choose best
-	best := "unknown"
-	maxScore := 0
-	for k, v := range score {
-		if v > maxScore {
-			best = k
-			maxScore = v
-		}
-	}
-
-	return best
-}
-
-func (p *Page) allBlocks() []ContentBlock {
-	if len(p.Content) > 0 {
-		var blocks []ContentBlock
-		for _, s := range p.Content {
-			blocks = append(blocks, s.Blocks...)
-		}
-		return blocks
-	}
-	return p.FlatContent
 }

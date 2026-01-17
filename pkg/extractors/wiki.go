@@ -49,17 +49,18 @@ func ExtractWiki(page *models.Page) *WikiExtraction {
 // extractInfobox finds and parses the infobox.
 func extractInfobox(sections []models.Section) *Infobox {
 	// Infoboxes are typically in tables at the start of the article
-	for _, section := range sections {
-		for _, block := range section.Blocks {
-			if block.Table != nil {
-				// Check if this looks like an infobox
-				if isInfoboxTable(block.Table) {
-					return parseInfobox(block.Table)
-				}
+	// Only check the first section
+	if len(sections) == 0 {
+		return nil
+	}
+
+	for _, block := range sections[0].Blocks {
+		if block.Table != nil {
+			// Check if this looks like an infobox
+			if isInfoboxTable(block.Table) {
+				return parseInfobox(block.Table)
 			}
 		}
-		// Only check first section
-		break
 	}
 	return nil
 }

@@ -149,8 +149,10 @@ func processHTML(id int, logger *slog.Logger, url string, rawHTML []byte, manage
 		}
 
 		// Write full wordcount as sorted text file
+		// Word counts are public data, standard file permissions (0644) are appropriate
 		wordcountPath := filepath.Join(artifact_manager.GetURLDir(artifact_manager.DefaultBaseDir, urlID), "wordcount.txt")
 		sortedWordcounts := formatWordCountsSorted(result.WordCounts)
+		// #nosec G306
 		if err := os.WriteFile(wordcountPath, []byte(sortedWordcounts), 0644); err != nil {
 			logger.Warn("Failed to write wordcount.txt", "url", url, "error", err)
 		}
