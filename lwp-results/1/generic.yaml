@@ -1,27 +1,23 @@
-url: https://example.com
-title: Example Domain
+url: https://async.rs/
+title: async-std
 content:
     - id: section-1
-      heading: null
-      level: 0
+      heading:
+        confidence: 0.7
+        text: Sponsors
+        type: h3
+      level: 3
       blocks:
-        - id: block-1
-          type: p
-          text: This domain is for use in documentation examples without needing permission. Avoid use in operations.
-          table: null
-          code: null
-          links: []
-          confidence: 0.4
-        - id: block-2
-          type: p
-          text: Learn more
-          table: null
-          code: null
+        - confidence: 0.4
           links:
-            - href: https://iana.org/domains/example
-              text: Learn more
+            - href: https://opencollective.com/async-rs/
+              text: OpenCollective
               type: external
-          confidence: 0.35000000000000003
+            - href: https://ferrous-systems.com
+              text: Ferrous Systems
+              type: external
+          text: We are looking for sustainable sponsorship. If your company is relying on async-std or simply wants to see async-std evolve faster to meet your requirements, please consider backing the project through OpenCollective or directly through Ferrous Systems.
+          type: p
       children: []
 flatcontent: []
 metadata:
@@ -42,11 +38,11 @@ metadata:
     extractionmode: full
     extractionquality: ok
     author: ""
-    excerpt: This domain is for use in documentation examples without needing permission. Avoid use in operations.
+    excerpt: A Rust library for easy and understandable async programming
     sitename: ""
     publishedtime: ""
     favicon: ""
-    image: ""
+    image: https://async.rs/images/logo--card.png
     domaintype: commercial
     domaincategory: general
     country: unknown

@@ -73,6 +73,22 @@ func handleScore(req models.Request) models.Response {
 }
 
 func handleQuery(req models.Request) models.Response {
+	// If no filter provided, show helpful examples instead of erroring
+	if req.Filter == "" {
+		return models.Response{
+			Verb:       VerbQUERY,
+			Data:       nil,
+			Confidence: 0.0,
+			Coverage:   0.0,
+			Unknowns:   []string{},
+			Error: &models.ErrorInfo{
+				Type:             "missing_filter",
+				Message:          generateQueryHelp(req.Session),
+				SuggestedActions: []string{},
+			},
+		}
+	}
+
 	// Open database
 	db, err := openDB()
 	if err != nil {
@@ -85,7 +101,7 @@ func handleQuery(req models.Request) models.Response {
 			Error: &models.ErrorInfo{
 				Type:             "database_error",
 				Message:          fmt.Sprintf("Failed to open database: %v", err),
-				SuggestedActions: []string{"Ensure database is initialized", "Run 'lwp db init' if needed"},
+				SuggestedActions: []string{"Ensure database is initialized", "Run 'llm-web-parser db init' if needed"},
 			},
 		}
 	}
@@ -140,4 +156,40 @@ func suggestVerb(verb string) string {
 // openDB opens the database connection.
 func openDB() (*dbpkg.DB, error) {
 	return dbpkg.Open()
+}
+
+// generateQueryHelp generates LLM-friendly help text with query examples.
+func generateQueryHelp(sessionID int) string {
+	sessionStr := ""
+	if sessionID > 0 {
+		sessionStr = fmt.Sprintf(" --session=%d", sessionID)
+	}
+
+	return fmt.Sprintf(`💡 No filter specified. Here's what you can query:
+
+Content types (academic, docs, wiki, news, blog, repo):
+  llm-web-parser corpus query%s --filter="content_type=academic"       # Research papers
+
+Boolean features extracted during parsing (has_code_examples, has_abstract, has_toc, has_infobox):
+  llm-web-parser corpus query%s --filter="has_code_examples"           # URLs with code blocks
+
+Numeric metrics from parsed content (citation_count, section_count, code_block_count, detection_confidence):
+  llm-web-parser corpus query%s --filter="citation_count>=20"          # Highly cited papers (>=20 citations)
+
+Search by keyword (use any word from 'corpus extract'):
+  llm-web-parser corpus query%s --filter="keyword:api"                 # URLs about "api"
+
+Combine with AND/OR:
+  llm-web-parser corpus query%s --filter="has_code_examples AND keyword:python"
+  llm-web-parser corpus query%s --filter="content_type=academic OR content_type=docs"
+
+Where this data comes from:
+  - Extracted during 'llm-web-parser fetch --urls "..."'
+  - Metadata from HTML parsing (meta tags, structure)
+  - Citations/code blocks from content parsing
+  - Keywords from text analysis (run 'corpus extract')
+
+Run 'llm-web-parser corpus query --help' for full field reference.`,
+		sessionStr, sessionStr, sessionStr, sessionStr,
+		sessionStr, sessionStr)
 }

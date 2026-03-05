@@ -28,12 +28,20 @@ type Index struct {
 	Sessions []Info `yaml:"sessions"`
 }
 
-// GetSessionDir returns the full path to a session directory.
-// Directory format: lwp-sessions/YYYY-MM-DD-{id}
+// GetSessionDir returns the absolute path to a session directory.
+// Directory format: {cwd}/lwp-sessions/YYYY-MM-DD-{id}
 func GetSessionDir(sessionID int64, timestamp time.Time) string {
 	dateStr := timestamp.Format("2006-01-02")
 	dirName := fmt.Sprintf("%s-%d", dateStr, sessionID)
-	return filepath.Join("lwp-sessions", dirName)
+	relPath := filepath.Join("lwp-sessions", dirName)
+
+	// Get absolute path
+	absPath, err := filepath.Abs(relPath)
+	if err != nil {
+		// Fallback to relative if abs fails
+		return relPath
+	}
+	return absPath
 }
 
 // GetSessionsIndexPath returns the path to the sessions index file.

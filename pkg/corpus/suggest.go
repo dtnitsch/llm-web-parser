@@ -131,7 +131,7 @@ func formatSuggestions(sessionID int64, stats *SessionStats) string {
 		sb.WriteString(fmt.Sprintf("  %s\n", suggestion))
 	}
 
-	sb.WriteString("\nAdvanced: lwp corpus --help\n")
+	sb.WriteString("\nAdvanced: llm-web-parser corpus --help\n")
 
 	return sb.String()
 }
@@ -144,36 +144,36 @@ func generateSuggestions(sessionID int64, stats *SessionStats) []string {
 	if stats.TotalURLs > 0 {
 		// Add EXTRACT suggestion first (most useful starting point)
 		suggestions = append(suggestions,
-			fmt.Sprintf("lwp corpus extract --session=%d", sessionID))
+			fmt.Sprintf("llm-web-parser corpus extract --session=%d", sessionID))
 
 		// Get top keyword and suggest filtering by it
 		topKeyword := getTopKeywordForSession(sessionID)
 		if topKeyword != "" {
 			suggestions = append(suggestions,
-				fmt.Sprintf("lwp corpus query --session=%d --filter=\"keyword:%s\"  # Find %s content", sessionID, topKeyword, topKeyword))
+				fmt.Sprintf("llm-web-parser corpus query --session=%d --filter=\"keyword:%s\"  # Find %s content", sessionID, topKeyword, topKeyword))
 		}
 
 		// Content type queries
 		for contentType := range stats.ContentTypes {
 			suggestions = append(suggestions,
-				fmt.Sprintf("lwp corpus query --session=%d --filter=\"content_type=%s\"", sessionID, contentType))
+				fmt.Sprintf("llm-web-parser corpus query --session=%d --filter=\"content_type=%s\"", sessionID, contentType))
 		}
 
 		// Feature-based queries
 		if stats.HasCodeExamples > 0 {
 			suggestions = append(suggestions,
-				fmt.Sprintf("lwp corpus query --session=%d --filter=\"has_code\"", sessionID))
+				fmt.Sprintf("llm-web-parser corpus query --session=%d --filter=\"has_code\"", sessionID))
 		}
 
 		if stats.HasAbstract > 0 {
 			suggestions = append(suggestions,
-				fmt.Sprintf("lwp corpus query --session=%d --filter=\"has_abstract\"", sessionID))
+				fmt.Sprintf("llm-web-parser corpus query --session=%d --filter=\"has_abstract\"", sessionID))
 		}
 
 		// Combined keyword + feature query
 		if topKeyword != "" && stats.HasCodeExamples > 0 {
 			suggestions = append(suggestions,
-				fmt.Sprintf("lwp corpus query --session=%d --filter=\"keyword:%s AND has_code\"", sessionID, topKeyword))
+				fmt.Sprintf("llm-web-parser corpus query --session=%d --filter=\"keyword:%s AND has_code\"", sessionID, topKeyword))
 		}
 	}
 

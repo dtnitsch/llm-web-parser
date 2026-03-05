@@ -32,16 +32,15 @@ func openDB(dbPath string) (*sql.DB, error) {
 	return sqlDB, nil
 }
 
-// Open opens or creates the SQLite database next to the binary
+// Open opens or creates the SQLite database in the current working directory
 func Open() (*DB, error) {
-	// Get executable path
-	execPath, err := os.Executable()
+	// Get current working directory
+	cwd, err := os.Getwd()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get executable path: %w", err)
+		return nil, fmt.Errorf("failed to get current working directory: %w", err)
 	}
-	execDir := filepath.Dir(execPath)
 
-	dbPath := filepath.Join(execDir, DefaultDBName)
+	dbPath := filepath.Join(cwd, DefaultDBName)
 
 	sqlDB, err := openDB(dbPath)
 	if err != nil {

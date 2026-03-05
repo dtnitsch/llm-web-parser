@@ -54,7 +54,15 @@ go build
 
 ## For LLMs
 
-**Complete command reference:** See [`docs/development/index.yaml`](docs/development/index.yaml)
+**NEW: Research Workflow Guide** → [`docs/LLM-RESEARCH-WORKFLOW.md`](docs/LLM-RESEARCH-WORKFLOW.md)
+
+**Complete step-by-step guide for LLM research:**
+- Fetch 30+ URLs and analyze with corpus API
+- Extract specific data (pricing tiers, code blocks, academic citations)
+- Filter and query collections efficiently
+- Practical examples: Netlify pricing extraction, API comparison, academic paper analysis
+
+**Command reference:** See [`docs/development/index.yaml`](docs/development/index.yaml)
 
 - **Start here:** Read `index.yaml` for overview and structure
 - **Detailed examples:** Consult `fetch.md`, `db.md`, `corpus.md` for specific commands
@@ -346,9 +354,11 @@ rm -rf llm-web-parser-results/
 
 ## Tips for LLMs
 
+**Note:** Examples below use `lwp` as shorthand for `llm-web-parser` to save space. Both work the same.
+
 1. **Use URL IDs** - Saves 90% tokens vs full URLs
    ```
-   lwp db show 42    # Instead of lwp db show https://example.com
+   lwp db show 42    # Instead of: llm-web-parser db show https://example.com
    ```
 
 2. **Default to latest session** - Most commands use latest automatically
@@ -386,12 +396,12 @@ Note: URLs are auto-cleaned (whitespace trimmed, trailing punctuation removed, m
 
 **Failed fetches:**
 - Logged to `failed-urls.yaml` in session directory
-- Retry with: `lwp fetch --session <id> --failed-only`
+- Retry with: `llm-web-parser fetch --session <id> --failed-only`
 - Exit codes: 0 = success, 1 = partial failure, 2 = complete failure
 
 **No sessions:**
 ```
-Error: no sessions found. Run 'lwp fetch --urls "..."' first
+Error: no sessions found. Run 'llm-web-parser fetch --urls "..."' first
 ```
 
 ## Examples

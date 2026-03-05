@@ -121,14 +121,7 @@ func FetchAction(c *cli.Context) error {
 	// WorkerCount is already set during config initialization from CLI flag
 
 	if len(config.URLs) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: No URLs provided")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage:")
-		fmt.Fprintln(os.Stderr, `  llm-web-parser fetch --urls "https://example.com,https://example.org"`)
-		fmt.Fprintln(os.Stderr, `  llm-web-parser fetch --session 5                         # Refetch all URLs from session 5`)
-		fmt.Fprintln(os.Stderr, `  llm-web-parser fetch --session 5 --failed-only          # Retry only failed URLs`)
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Need help? Run: llm-web-parser fetch --help")
+		printFetchHelp()
 		os.Exit(1)
 	}
 
@@ -183,7 +176,21 @@ func FetchAction(c *cli.Context) error {
 		logger.Info("Session cache hit - returning cached summaries", "session_id", sessionID)
 		sessionTimestamp := time.Now() // For display purposes
 		sessionDir := session.GetSessionDir(sessionID, sessionTimestamp)
-		fmt.Printf("Session %d cache hit! Results at: %s\n", sessionID, sessionDir)
+
+		// Show cache hit with helpful next steps
+		fmt.Printf("Session %d cache hit! Results at: %s\n\n", sessionID, sessionDir)
+		fmt.Printf("💡 Quick start:\n")
+		fmt.Printf("  llm-web-parser corpus extract --session=%d               # See top keywords across all URLs\n", sessionID)
+		fmt.Printf("  llm-web-parser corpus suggest --session=%d               # Get query suggestions\n", sessionID)
+		fmt.Printf("\n  Query examples:\n")
+		fmt.Printf("  llm-web-parser corpus query --session=%d --filter=\"has_code_examples\"       # URLs with code blocks\n", sessionID)
+		fmt.Printf("  llm-web-parser corpus query --session=%d --filter=\"content_type=academic\"  # Academic papers only\n", sessionID)
+		fmt.Printf("  llm-web-parser corpus query --session=%d --filter=\"keyword:api\"            # URLs about 'api'\n", sessionID)
+		fmt.Printf("\nCommands:\n")
+		fmt.Printf("  llm-web-parser db get --file=details %d  # Full session YAML\n", sessionID)
+		fmt.Printf("  llm-web-parser db urls %d                # List URL IDs\n", sessionID)
+		fmt.Printf("  llm-web-parser db show <id>              # Get parsed content\n")
+		fmt.Printf("  llm-web-parser db raw <id>               # Get raw HTML\n")
 		return nil
 	}
 
@@ -302,9 +309,12 @@ func FetchAction(c *cli.Context) error {
 		// Show quick start commands for corpus API
 		if successCount > 0 {
 			fmt.Printf("\n💡 Quick start:\n")
-			fmt.Printf("  lwp corpus extract --session=%d        # See top keywords\n", sessionID)
-			fmt.Printf("  lwp corpus query --session=%d --filter=\"has_code\"  # Filter results\n", sessionID)
-			fmt.Printf("\nMore: lwp corpus suggest --session=%d\n", sessionID)
+			fmt.Printf("  llm-web-parser corpus extract --session=%d               # See top keywords across all URLs\n", sessionID)
+			fmt.Printf("  llm-web-parser corpus suggest --session=%d               # Get query suggestions\n", sessionID)
+			fmt.Printf("\n  Query examples:\n")
+			fmt.Printf("  llm-web-parser corpus query --session=%d --filter=\"has_code_examples\"       # URLs with code blocks\n", sessionID)
+			fmt.Printf("  llm-web-parser corpus query --session=%d --filter=\"content_type=academic\"  # Academic papers only\n", sessionID)
+			fmt.Printf("  llm-web-parser corpus query --session=%d --filter=\"keyword:api\"            # URLs about 'api'\n", sessionID)
 		}
 
 		// Show enhanced URL display unless --quiet flag is set
@@ -350,7 +360,7 @@ func FetchAction(c *cli.Context) error {
 					}
 
 					// Line 4: Copy-paste ready command
-					fmt.Printf("      → lwp db show %d\n", u.URLID)
+					fmt.Printf("      → llm-web-parser db show %d\n", u.URLID)
 					fmt.Printf("\n")
 				}
 
@@ -363,7 +373,7 @@ func FetchAction(c *cli.Context) error {
 		sanitizedCount, err := database.CountSanitizedURLs(sessionID)
 		if err == nil && sanitizedCount > 0 {
 			fmt.Printf("\nNote: %d URL(s) were auto-cleaned\n", sanitizedCount)
-			fmt.Printf("  To see what changed: lwp db urls %d --sanitized\n", sessionID)
+			fmt.Printf("  To see what changed: llm-web-parser db urls %d --sanitized\n", sessionID)
 		}
 
 		return nil
@@ -489,4 +499,46 @@ func FetchAction(c *cli.Context) error {
 	}
 
 	return nil
+}
+
+// printFetchHelp prints LLM-friendly examples when no URLs are provided.
+func printFetchHelp() {
+	// Get current working directory for context
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "{current-directory}"
+	}
+
+	fmt.Print(`💡 No URLs specified. Here's how to use fetch:
+
+Basic usage (metadata + keywords extracted):
+  llm-web-parser fetch --urls "https://example.com,https://example.org"
+
+Parse modes (minimal, wordcount, full-parse):
+  llm-web-parser fetch --urls "..." --features minimal       # Metadata only (fastest, no keywords)
+  llm-web-parser fetch --urls "..." --features wordcount     # Metadata + keywords (default, recommended)
+  llm-web-parser fetch --urls "..." --features full-parse    # Full content extraction
+
+Two-stage workflow (recommended for 30+ URLs):
+  llm-web-parser fetch --urls "url1,url2,...,url30"          # Step 1: Quick scan with keywords
+  llm-web-parser corpus query --session 1 --filter="..."     # Step 2: Filter to relevant URLs
+  llm-web-parser fetch --session 1 --features full-parse     # Step 3: Deep parse filtered URLs
+
+Session operations (refetch same URLs with different modes):
+  llm-web-parser fetch --session 5 --features full-parse     # Refetch session 5 with full parsing
+  llm-web-parser fetch --session 5 --failed-only             # Retry only failed URLs
+
+Where data is stored:
+  - Database: ` + cwd + `/llm-web-parser.db
+  - Sessions: ` + cwd + `/lwp-sessions/YYYY-MM-DD-{id}/
+  - Results:  ` + cwd + `/lwp-results/
+
+What you get:
+  - Metadata: title, excerpt, domain type, confidence score
+  - Keywords: top 10 keywords per URL (wordcount/full-parse modes)
+  - Full content: structured blocks with confidence scores (full-parse mode)
+  - Session tracking: auto-incrementing session IDs for easy refetching
+
+Run 'llm-web-parser fetch --help' for all options.
+`)
 }

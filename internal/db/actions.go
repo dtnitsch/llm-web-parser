@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -51,7 +52,7 @@ func SessionsAction(c *cli.Context) error {
 	}
 
 	fmt.Printf("\nTotal: %d sessions\n", len(sessions))
-	fmt.Printf("\nTip: Use 'lwp db session <id>' to see details\n")
+	fmt.Printf("\nTip: Use 'llm-web-parser db session <id>' to see details\n")
 
 	return nil
 }
@@ -124,7 +125,7 @@ func SessionAction(c *cli.Context) error {
 		}
 	}
 
-	fmt.Printf("\nTip: Use 'lwp db get %d' to see summary YAML\n", sessionID)
+	fmt.Printf("\nTip: Use 'llm-web-parser db get %d' to see summary YAML\n", sessionID)
 
 	return nil
 }
@@ -317,7 +318,7 @@ func UrlsAction(c *cli.Context) error {
 // showAction shows parsed content for a URL by ID or URL
 func ShowAction(c *cli.Context) error {
 	if c.NArg() == 0 {
-		return fmt.Errorf("URL ID or URL required\nUsage: lwp db show <url_id_or_url>\nExample: lwp db show 123 OR lwp db show 6,7,8 OR lwp db show https://example.com")
+		return fmt.Errorf("URL ID or URL required\nUsage: llm-web-parser db show <url_id_or_url>\nExample: llm-web-parser db show 123 OR llm-web-parser db show 6,7,8 OR llm-web-parser db show https://example.com")
 	}
 
 	database, err := dbpkg.Open()
@@ -332,6 +333,9 @@ func ShowAction(c *cli.Context) error {
 	}
 
 	arg := c.Args().First()
+
+	// Check for format flag (declare at function scope)
+	outputFormat := strings.ToLower(c.String("format"))
 
 	// Check if argument contains comma (batch mode)
 	if strings.Contains(arg, ",") {
@@ -351,19 +355,32 @@ func ShowAction(c *cli.Context) error {
 			}
 			if !found {
 				url, _ := database.GetURLByID(urlID)
-				return fmt.Errorf("parsed content not found for URL ID %d (%s)\n\nThis URL may not have been fetched yet. Try:\n  lwp fetch --urls \"%s\"", urlID, url, url)
+				return fmt.Errorf("parsed content not found for URL ID %d (%s)\n\nThis URL may not have been fetched yet. Try:\n  llm-web-parser fetch --urls \"%s\"", urlID, url, url)
 			}
 
 			results = append(results, string(data))
 		}
 
-		// Print results (YAML format from storage)
-		fmt.Println("# YAML compact mode: Only non-null/non-default fields shown")
-		for i, result := range results {
-			if i > 0 {
-				fmt.Print("\n---\n\n")
+		// Print results based on format
+		if outputFormat == "json" {
+			// For JSON batch mode, output as array
+			fmt.Println("[")
+			for i, result := range results {
+				if i > 0 {
+					fmt.Println(",")
+				}
+				fmt.Print(result)
 			}
-			fmt.Print(result)
+			fmt.Println("\n]")
+		} else {
+			// YAML format from storage (default)
+			fmt.Println("# YAML compact mode: Only non-null/non-default fields shown")
+			for i, result := range results {
+				if i > 0 {
+					fmt.Print("\n---\n\n")
+				}
+				fmt.Print(result)
+			}
 		}
 		return nil
 	}
@@ -394,6 +411,7 @@ func ShowAction(c *cli.Context) error {
 	onlyTypes := c.String("only")
 	grepPattern := c.String("grep")
 	grepContext := c.Int("context")
+	// outputFormat already declared above
 
 	// Apply outline filter (special output)
 	if outlineMode {
@@ -419,25 +437,34 @@ func ShowAction(c *cli.Context) error {
 		page = *filtered
 	}
 
-	// Re-marshal with compact format
-	compactData, err := yaml.Marshal(&page)
-	if err != nil {
-		return fmt.Errorf("failed to marshal content: %w", err)
-	}
-
-	if onlyTypes != "" || grepPattern != "" {
-		fmt.Println("# YAML compact mode: Only non-null/non-default fields shown (filtered)")
+	// Re-marshal based on requested format
+	var output []byte
+	if outputFormat == "json" {
+		output, err = json.MarshalIndent(&page, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal content as JSON: %w", err)
+		}
+		fmt.Print(string(output))
 	} else {
-		fmt.Println("# YAML compact mode: Only non-null/non-default fields shown")
+		// Default to YAML
+		output, err = yaml.Marshal(&page)
+		if err != nil {
+			return fmt.Errorf("failed to marshal content as YAML: %w", err)
+		}
+		if onlyTypes != "" || grepPattern != "" {
+			fmt.Println("# YAML compact mode: Only non-null/non-default fields shown (filtered)")
+		} else {
+			fmt.Println("# YAML compact mode: Only non-null/non-default fields shown")
+		}
+		fmt.Print(string(output))
 	}
-	fmt.Print(string(compactData))
 	return nil
 }
 
 // rawAction shows raw HTML for a URL by ID or URL
 func RawAction(c *cli.Context) error {
 	if c.NArg() == 0 {
-		return fmt.Errorf("URL ID or URL required\nUsage: lwp db raw <url_id_or_url>\nExample: lwp db raw 123 OR lwp db raw 6,7,8 OR lwp db raw https://example.com")
+		return fmt.Errorf("URL ID or URL required\nUsage: llm-web-parser db raw <url_id_or_url>\nExample: llm-web-parser db raw 123 OR llm-web-parser db raw 6,7,8 OR llm-web-parser db raw https://example.com")
 	}
 
 	database, err := dbpkg.Open()
@@ -502,7 +529,7 @@ func RawAction(c *cli.Context) error {
 
 func FindURLAction(c *cli.Context) error {
 	if c.NArg() == 0 {
-		return fmt.Errorf("URL required\nUsage: lwp db find-url <url>\nExample: lwp db find-url https://example.com")
+		return fmt.Errorf("URL required\nUsage: llm-web-parser db find-url <url>\nExample: llm-web-parser db find-url https://example.com")
 	}
 
 	database, err := dbpkg.Open()
@@ -527,19 +554,77 @@ func filterOutline(page *models.Page) string {
 
 	sb.WriteString(fmt.Sprintf("url: %s\n", page.URL))
 	sb.WriteString(fmt.Sprintf("title: %s\n\n", page.Title))
-	sb.WriteString("outline:\n")
 
-	// Extract headings from flatcontent
-	for _, block := range page.FlatContent {
-		// Check if it's a heading (h1, h2, h3)
-		if strings.HasPrefix(block.Type, "h") && len(block.Type) == 2 {
-			level := block.Type[1] - '0' // Convert '1', '2', '3' to int
-			if level >= 1 && level <= 3 {
-				indent := strings.Repeat("  ", int(level)-1)
-				sb.WriteString(fmt.Sprintf("%s- %s (%s)\n", indent, block.Text, block.Type))
+	// Count block types
+	typeCounts := make(map[string]int)
+	var countTypes func(sections []models.Section)
+	countTypes = func(sections []models.Section) {
+		for _, section := range sections {
+			for _, block := range section.Blocks {
+				typeCounts[block.Type]++
+			}
+			if len(section.Children) > 0 {
+				countTypes(section.Children)
 			}
 		}
 	}
+	countTypes(page.Content)
+
+	// Show block type counts
+	sb.WriteString("content types:\n")
+	// Order: table, code, li, p, then others
+	priority := []string{"table", "code", "li", "p"}
+	for _, t := range priority {
+		if count, ok := typeCounts[t]; ok {
+			sb.WriteString(fmt.Sprintf("  %s: %d\n", t, count))
+		}
+	}
+	// Show other types
+	for t, count := range typeCounts {
+		isPriority := false
+		for _, pt := range priority {
+			if t == pt {
+				isPriority = true
+				break
+			}
+		}
+		if !isPriority {
+			sb.WriteString(fmt.Sprintf("  %s: %d\n", t, count))
+		}
+	}
+
+	sb.WriteString("\ndocument structure (headings h1-h6):\n")
+
+	// Recursively extract headings from hierarchical content
+	var extractHeadings func(sections []models.Section)
+	extractHeadings = func(sections []models.Section) {
+		for _, section := range sections {
+			if section.Heading != nil && section.Heading.Text != "" {
+				indent := strings.Repeat("  ", section.Level-1)
+				sb.WriteString(fmt.Sprintf("%s- %s (%s)\n", indent, section.Heading.Text, section.Heading.Type))
+			}
+			// Recurse into children
+			if len(section.Children) > 0 {
+				extractHeadings(section.Children)
+			}
+		}
+	}
+
+	extractHeadings(page.Content)
+
+	// Add helpful examples based on what's in the document
+	sb.WriteString("\nuseful commands:\n")
+	if typeCounts["table"] > 0 {
+		sb.WriteString("  llm-web-parser db show --only=table 1        # Show tables only\n")
+	}
+	if typeCounts["code"] > 0 {
+		sb.WriteString("  llm-web-parser db show --only=code 1         # Show code blocks only\n")
+	}
+	if typeCounts["li"] > 0 {
+		sb.WriteString("  llm-web-parser db show --only=li 1           # Show list items only\n")
+	}
+	sb.WriteString("  llm-web-parser db show --grep \"keyword\" 1    # Search for keyword\n")
+	sb.WriteString("  llm-web-parser db show --format json 1       # Output as JSON for jq\n")
 
 	return sb.String()
 }
@@ -557,14 +642,52 @@ func filterByType(page *models.Page, types string) (*models.Page, error) {
 	}
 
 	filtered := &models.Page{
-		URL:   page.URL,
-		Title: page.Title,
-		FlatContent: make([]models.ContentBlock, 0),
+		URL:      page.URL,
+		Title:    page.Title,
+		Metadata: page.Metadata,
+		Content:  make([]models.Section, 0),
 	}
 
-	for _, block := range page.FlatContent {
-		if typeMap[block.Type] {
-			filtered.FlatContent = append(filtered.FlatContent, block)
+	// Recursively filter sections
+	var filterSection func(section models.Section) *models.Section
+	filterSection = func(section models.Section) *models.Section {
+		filteredSection := models.Section{
+			ID:       section.ID,
+			Heading:  section.Heading,
+			Level:    section.Level,
+			Blocks:   make([]models.ContentBlock, 0),
+			Children: make([]models.Section, 0),
+		}
+
+		// Filter blocks by type
+		for _, block := range section.Blocks {
+			if typeMap[block.Type] {
+				filteredSection.Blocks = append(filteredSection.Blocks, block)
+			}
+			// Special handling for table type - check if block contains a table
+			if typeMap["table"] && block.Table != nil {
+				filteredSection.Blocks = append(filteredSection.Blocks, block)
+			}
+		}
+
+		// Recursively filter children
+		for _, child := range section.Children {
+			if filtered := filterSection(child); filtered != nil {
+				filteredSection.Children = append(filteredSection.Children, *filtered)
+			}
+		}
+
+		// Only include section if it has matching content
+		if len(filteredSection.Blocks) > 0 || len(filteredSection.Children) > 0 {
+			return &filteredSection
+		}
+
+		return nil
+	}
+
+	for _, section := range page.Content {
+		if filteredSec := filterSection(section); filteredSec != nil {
+			filtered.Content = append(filtered.Content, *filteredSec)
 		}
 	}
 

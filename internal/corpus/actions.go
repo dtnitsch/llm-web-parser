@@ -32,7 +32,13 @@ func CorpusAction(c *cli.Context) error {
 
 	// Build constraints map for verb-specific parameters
 	constraints := make(map[string]interface{})
-	if top := c.Int("top"); top != 0 || c.IsSet("top") {
+	// Check --top first, fall back to --limit
+	if c.IsSet("top") {
+		constraints["top"] = c.Int("top")
+	} else if c.IsSet("limit") {
+		constraints["top"] = c.Int("limit")
+	} else if top := c.Int("top"); top != 0 {
+		// Use default value if neither flag was explicitly set
 		constraints["top"] = top
 	}
 
@@ -50,6 +56,12 @@ func CorpusAction(c *cli.Context) error {
 
 	// Handle the request
 	resp := corpus.Handle(req)
+
+	// Special handling for missing_filter error - print help directly
+	if resp.Error != nil && resp.Error.Type == "missing_filter" {
+		fmt.Print(resp.Error.Message)
+		return nil
+	}
 
 	// Output response as YAML
 	yamlBytes, err := yaml.Marshal(resp)

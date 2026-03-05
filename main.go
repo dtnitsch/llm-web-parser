@@ -41,30 +41,12 @@ func main() {
 			{
 				Name:  "fetch",
 				Usage: "Fetch and parse URLs",
-				Description: `EXAMPLES:
-   # Basic fetch (metadata only, no keywords)
-   llm-web-parser fetch --urls "https://example.com"
+				Description: `Fetches URLs and extracts metadata, keywords, and content.
 
-   # With keywords for triage (recommended for LLMs)
-   llm-web-parser fetch --urls "https://example.com" --features wordcount
+Features: minimal (metadata only), wordcount (default, adds keywords), full-parse (full content).
+Sessions are auto-tracked in SQLite database for easy refetching.
 
-   # Full content extraction
-   llm-web-parser fetch --urls "https://example.com" --features full-parse
-
-   # Inline filtering
-   llm-web-parser fetch --urls "..." --features full-parse --filter "conf:>=0.7"
-
-FEATURES:
-   minimal            - Metadata only. Fast but NO keywords (can't see what URLs are about)
-   wordcount (default) - Adds keyword extraction (~1s extra). Shows top keywords per URL
-   full-parse         - Full content + keywords. Use for deep content analysis
-
-NOTES:
-   • Sessions auto-tracked in SQLite database (lwp-web-parser.db)
-   • Same URL = instant cache hit (no re-fetching within --max-age window)
-   • Results stored in llm-web-parser-results/ directory
-   • Next steps shown in fetch output (corpus commands, db commands)
-`,
+Run 'llm-web-parser fetch' (no args) for examples.`,
 				Action: fetch.FetchAction,
 				Flags: []cli.Flag{
 					&cli.BoolFlag{
@@ -192,6 +174,14 @@ NOTES:
 			{
 				Name:  "db",
 				Usage: "Database operations",
+				Before: func(c *cli.Context) error {
+					// If no subcommand provided, show helpful examples
+					if c.Args().Len() == 0 {
+						printDBHelp()
+						os.Exit(0)
+					}
+					return nil
+				},
 				Subcommands: []*cli.Command{
 					{
 						Name:  "init",
@@ -326,6 +316,11 @@ NOTE: Use 'llm-web-parser db urls' to see URL IDs for the latest session.`,
 								Usage: "Number of blocks to show before/after grep matches",
 								Value: 3,
 							},
+							&cli.StringFlag{
+								Name:  "format",
+								Usage: "Output format: yaml (default) or json",
+								Value: "yaml",
+							},
 						},
 						Action: db.ShowAction,
 					},
@@ -361,6 +356,14 @@ NOTE: This shows the cached HTML. Use 'llm-web-parser db urls' to find URL IDs.`
 			{
 				Name:  "corpus",
 				Usage: "Corpus API - query and analyze web content collections",
+				Before: func(c *cli.Context) error {
+					// If no subcommand provided, show helpful examples
+					if c.Args().Len() == 0 {
+						printCorpusHelp()
+						os.Exit(0)
+					}
+					return nil
+				},
 				Subcommands: []*cli.Command{
 					{
 						Name:   "extract",
@@ -369,7 +372,8 @@ NOTE: This shows the cached HTML. Use 'llm-web-parser db urls' to find URL IDs.`
 						Flags: []cli.Flag{
 							&cli.IntFlag{Name: "session", Usage: "Session ID (extract keywords from all URLs in session)"},
 							&cli.StringFlag{Name: "url-ids", Usage: "Comma-separated URL IDs (e.g., 1,3,5)"},
-							&cli.IntFlag{Name: "top", Value: 25, Usage: "Return top N keywords (0 for all)"},
+							&cli.IntFlag{Name: "top", Value: 10, Usage: "Return top N keywords (0 for all)"},
+							&cli.IntFlag{Name: "limit", Value: 10, Usage: "Alias for --top", Hidden: true},
 							&cli.StringFlag{Name: "format", Value: "json", Usage: "Output format (json, yaml, csv)"},
 						},
 					},
@@ -481,4 +485,93 @@ NOTE: This shows the cached HTML. Use 'llm-web-parser db urls' to find URL IDs.`
 		logger.Error("application exited with an error", "error", err)
 		os.Exit(1)
 	}
+}
+
+// printDBHelp prints LLM-friendly examples for db operations.
+func printDBHelp() {
+	// Get current working directory for context
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "{current-directory}"
+	}
+
+	fmt.Printf(`💡 No subcommand specified. Here are the database operations:
+
+Session management (sessions, session, get, urls):
+  llm-web-parser db sessions                        # List all sessions
+  llm-web-parser db session                         # Show latest session details
+  llm-web-parser db session 5                       # Show session 5 details
+  llm-web-parser db get --file=details             # Get latest session YAML (summary-details.yaml)
+  llm-web-parser db get --file=index 5             # Get session 5 summary-index.yaml
+  llm-web-parser db urls                            # Show URL IDs for latest session
+  llm-web-parser db urls 5 --sanitized              # Show cleaned URLs from session 5
+
+URL content operations (show, raw, find-url):
+  llm-web-parser db show 42                         # Show parsed content for URL ID 42
+  llm-web-parser db show 42 --outline               # Show document outline (headings only)
+  llm-web-parser db show 42 --only=h2,code          # Filter by block type
+  llm-web-parser db show 42,43,44                   # Batch retrieve multiple URLs
+  llm-web-parser db raw 42                          # Show raw HTML for URL ID 42
+  llm-web-parser db find-url https://example.com    # Find URL ID for a URL
+
+Process with external tools (root path is .content[]):
+  # YAML output (default) - use yq for YAML processing:
+  llm-web-parser db show 42 | yq '.content[] | select(.level == 2) | .heading.text'
+
+  # JSON output - use jq for JSON processing (note: --format flag before URL ID):
+  llm-web-parser db show --format json 42 | jq '.content[] | select(.level == 2) | .heading.text'
+
+Query operations:
+  llm-web-parser db query --today                   # Sessions created today
+  llm-web-parser db query --failed                  # Sessions with failed URLs
+  llm-web-parser db query --url=example.com         # Sessions containing URL
+
+Database info:
+  llm-web-parser db path                            # Show database location
+  llm-web-parser db init                            # Initialize database schema
+
+Where data lives:
+  - Database: %s/llm-web-parser.db
+  - Sessions: %s/lwp-sessions/YYYY-MM-DD-{id}/
+  - Each session has: summary-index.yaml, summary-details.yaml, failed-urls.yaml (if any)
+
+Tip: Most commands default to latest session. Use session ID to specify a different one.
+
+Run 'llm-web-parser db --help' for subcommand list.
+`, cwd, cwd)
+}
+
+// printCorpusHelp prints LLM-friendly examples for corpus operations.
+func printCorpusHelp() {
+	fmt.Print(`💡 No subcommand specified. Here are the corpus operations:
+
+Extract keywords (get top keywords across URLs):
+  llm-web-parser corpus extract --session=1                  # Top 10 keywords from session 1
+  llm-web-parser corpus extract --session=1 --top=25         # Top 25 keywords
+  llm-web-parser corpus extract --url-ids=42,43,44 --top=50  # Keywords from specific URLs
+
+Query metadata (filter URLs by detected properties):
+  llm-web-parser corpus query --session=1 --filter="content_type=academic"
+  llm-web-parser corpus query --session=1 --filter="has_code_examples"
+  llm-web-parser corpus query --session=1 --filter="citation_count>=20"
+  llm-web-parser corpus query --session=1 --filter="keyword:api"
+  llm-web-parser corpus query --session=1 --filter="has_code_examples AND keyword:python"
+
+Get query suggestions (see what's available in your session):
+  llm-web-parser corpus suggest --session=1                  # Analyzes session and suggests queries
+
+Working commands:
+  ✅ extract  - Aggregate keywords across URLs
+  ✅ query    - Boolean filtering over metadata (has_code_examples, content_type, citations, etc.)
+  ✅ suggest  - Smart query suggestions based on session content
+
+Planned commands (not yet implemented):
+  ⏳ compare, detect, normalize, trace, score, delta, summarize, explain-failure
+
+Tip: Run any command without arguments to see detailed examples:
+  llm-web-parser corpus query           # Shows all available filters with examples
+  llm-web-parser corpus extract --help  # Traditional help
+
+Run 'llm-web-parser corpus --help' for subcommand list.
+`)
 }

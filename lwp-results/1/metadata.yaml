@@ -1,6 +1,6 @@
 url_id: 1
-url: https://example.com
-domain: example.com
+url: https://async.rs/
+domain: async.rs
 content_type: unknown
 detection_confidence: 5
 has_abstract: false
