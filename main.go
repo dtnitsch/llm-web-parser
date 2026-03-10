@@ -255,6 +255,10 @@ Run 'llm-web-parser fetch' (no args) for examples.`,
 								Name:  "sanitized",
 								Usage: "Show only URLs that were auto-cleaned",
 							},
+							&cli.BoolFlag{
+								Name:  "verbose",
+								Usage: "Show detailed 3-line format with metadata (default: compact 1-line format)",
+							},
 						},
 						Action: db.UrlsAction,
 					},
@@ -286,18 +290,19 @@ Run 'llm-web-parser fetch' (no args) for examples.`,
    llm-web-parser db show 42
 
    # Get just the outline (headings)
-   llm-web-parser db show 42 --outline
+   llm-web-parser db show --outline 42
 
    # Filter by content type (code blocks only)
-   llm-web-parser db show 42 --only=code,pre
+   llm-web-parser db show --only=code,pre 42
 
    # Search for specific pattern with context
-   llm-web-parser db show 42 --grep="async" --context=3
+   llm-web-parser db show --grep="async" --context=3 42
 
    # Batch retrieve (comma-separated IDs)
    llm-web-parser db show 42,43,44
 
-NOTE: Use 'llm-web-parser db urls' to see URL IDs for the latest session.`,
+NOTE: Use 'llm-web-parser db urls' to see URL IDs for the latest session.
+NOTE: Flags must come BEFORE the ID/URL (urfave/cli requirement).`,
 						Flags: []cli.Flag{
 							&cli.BoolFlag{
 								Name:  "outline",
@@ -315,6 +320,14 @@ NOTE: Use 'llm-web-parser db urls' to see URL IDs for the latest session.`,
 								Name:  "context",
 								Usage: "Number of blocks to show before/after grep matches",
 								Value: 3,
+							},
+							&cli.BoolFlag{
+								Name:  "metadata",
+								Usage: "Show compact metadata (5 essential fields)",
+							},
+							&cli.BoolFlag{
+								Name:  "metadata-full",
+								Usage: "Show all metadata fields (including empty)",
 							},
 							&cli.StringFlag{
 								Name:  "format",
@@ -508,8 +521,8 @@ Session management (sessions, session, get, urls):
 
 URL content operations (show, raw, find-url):
   llm-web-parser db show 42                         # Show parsed content for URL ID 42
-  llm-web-parser db show 42 --outline               # Show document outline (headings only)
-  llm-web-parser db show 42 --only=h2,code          # Filter by block type
+  llm-web-parser db show --outline 42               # Show document outline (headings only)
+  llm-web-parser db show --only=h2,code 42          # Filter by block type
   llm-web-parser db show 42,43,44                   # Batch retrieve multiple URLs
   llm-web-parser db raw 42                          # Show raw HTML for URL ID 42
   llm-web-parser db find-url https://example.com    # Find URL ID for a URL
