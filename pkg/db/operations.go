@@ -296,7 +296,8 @@ type ContentTypeInfo struct {
 	SectionCount        int
 	CitationCount       int
 	CodeBlockCount      int
-	TopKeywords         sql.NullString // JSON object
+	TopKeywords         sql.NullString // JSON object: {"word1": count1, ...}
+	MetaKeywords        sql.NullString // JSON array: ["keyword1", "keyword2", ...]
 }
 
 // UpdateURLContentType updates content type classification for a URL.
@@ -314,12 +315,13 @@ func (db *DB) UpdateURLContentType(urlID int64, info ContentTypeInfo) error {
 			citation_count = ?,
 			code_block_count = ?,
 			top_keywords = ?,
+			meta_keywords = ?,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE url_id = ?
 	`, info.ContentType, info.ContentSubtype, info.DetectionConfidence,
 		info.HasAbstract, info.HasInfobox, info.HasTOC, info.HasCodeExamples,
 		info.SectionCount, info.CitationCount, info.CodeBlockCount,
-		info.TopKeywords, urlID)
+		info.TopKeywords, info.MetaKeywords, urlID)
 	if err != nil {
 		return fmt.Errorf("failed to update content type: %w", err)
 	}
@@ -332,14 +334,14 @@ func (db *DB) GetURLContentInfo(urlID int64) (*ContentTypeInfo, error) {
 	err := db.QueryRow(`
 		SELECT content_type, content_subtype, detection_confidence,
 			has_abstract, has_infobox, has_toc, has_code_examples,
-			section_count, citation_count, code_block_count, top_keywords
+			section_count, citation_count, code_block_count, top_keywords, meta_keywords
 		FROM urls
 		WHERE url_id = ?
 	`, urlID).Scan(
 		&info.ContentType, &info.ContentSubtype, &info.DetectionConfidence,
 		&info.HasAbstract, &info.HasInfobox, &info.HasTOC, &info.HasCodeExamples,
 		&info.SectionCount, &info.CitationCount, &info.CodeBlockCount,
-		&info.TopKeywords,
+		&info.TopKeywords, &info.MetaKeywords,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("URL not found")

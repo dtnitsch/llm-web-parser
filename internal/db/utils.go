@@ -2,6 +2,8 @@ package db
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	dbpkg "github.com/dtnitsch/llm-web-parser/pkg/db"
 	"github.com/urfave/cli/v2"
@@ -43,24 +45,46 @@ func ResolveURLID(arg string, database *dbpkg.DB) (int64, error) {
 }
 
 // GetSessionIDOrLatest returns the session ID from args, or the latest session if not provided
+// Supports both --session flag and positional arg
 func GetSessionIDOrLatest(c *cli.Context, database *dbpkg.DB) (int64, error) {
-	if c.NArg() == 0 {
-		// No session ID provided, use latest
-		sessions, err := database.ListSessions(1)
-		if err != nil {
-			return 0, fmt.Errorf("failed to get latest session: %w", err)
+	// Detect common mistake: --session=X (equals sign)
+	for _, arg := range os.Args {
+		if strings.HasPrefix(arg, "--session=") {
+			value := strings.TrimPrefix(arg, "--session=")
+			return 0, fmt.Errorf("invalid flag syntax. Use --session %s (space, not equals)\n\nExamples:\n  %s --session %s\n  %s %s",
+				value, c.Command.FullName(), value, c.Command.FullName(), value)
 		}
-		if len(sessions) == 0 {
-			return 0, fmt.Errorf("no sessions found. Run 'lwp fetch --urls \"...\"' first")
-		}
-		return sessions[0].SessionID, nil
 	}
 
-	// Parse provided session ID
-	var sessionID int64
-	_, err := fmt.Sscanf(c.Args().First(), "%d", &sessionID)
-	if err != nil {
-		return 0, fmt.Errorf("invalid session ID: %s", c.Args().First())
+	// 1. Check for --session flag first
+	if c.IsSet("session") {
+		sessionID := int64(c.Int("session"))
+		if sessionID <= 0 {
+			return 0, fmt.Errorf("invalid session ID: %d (must be > 0)", sessionID)
+		}
+		return sessionID, nil
 	}
-	return sessionID, nil
+
+	// 2. Check for positional arg
+	if c.NArg() > 0 {
+		var sessionID int64
+		_, err := fmt.Sscanf(c.Args().First(), "%d", &sessionID)
+		if err != nil {
+			return 0, fmt.Errorf("invalid session ID: %s", c.Args().First())
+		}
+		if sessionID <= 0 {
+			return 0, fmt.Errorf("invalid session ID: %d (must be > 0)", sessionID)
+		}
+		return sessionID, nil
+	}
+
+	// 3. No session specified, use latest
+	sessions, err := database.ListSessions(1)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get latest session: %w", err)
+	}
+	if len(sessions) == 0 {
+		return 0, fmt.Errorf("no sessions found. Run 'lwp fetch --urls \"...\"' first")
+	}
+	return sessions[0].SessionID, nil
 }

@@ -14,7 +14,28 @@ func filterOutline(page *models.Page, urlID int64) string {
 
 	sb.WriteString(fmt.Sprintf("url_id: %d\n", urlID))
 	sb.WriteString(fmt.Sprintf("url: %s\n", page.URL))
-	sb.WriteString(fmt.Sprintf("title: %s\n\n", page.Title))
+	sb.WriteString(fmt.Sprintf("title: %s\n", page.Title))
+
+	// Show keywords from metadata (both are in the YAML artifact)
+	if len(page.Metadata.MetaKeywords) > 0 {
+		// Show top 5 meta keywords
+		display := page.Metadata.MetaKeywords
+		if len(display) > 5 {
+			display = display[:5]
+		}
+		sb.WriteString(fmt.Sprintf("meta_keywords: %s (from site)\n", strings.Join(display, ", ")))
+	}
+
+	if len(page.Metadata.TopKeywords) > 0 {
+		// Show top 5 extracted keywords
+		display := page.Metadata.TopKeywords
+		if len(display) > 5 {
+			display = display[:5]
+		}
+		sb.WriteString(fmt.Sprintf("top_keywords: %s (extracted)\n", strings.Join(display, ", ")))
+	}
+
+	sb.WriteString("\n")
 
 	// Count block types - handle both FlatContent and Content
 	typeCounts := make(map[string]int)

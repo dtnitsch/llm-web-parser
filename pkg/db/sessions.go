@@ -430,7 +430,8 @@ type URLWithMetadata struct {
 	CodeBlockCount int
 
 	// Keywords (top 5 for display)
-	TopKeywords []string
+	TopKeywords  []string // Word-frequency extracted keywords
+	MetaKeywords []string // Author-supplied meta tag keywords
 
 	// Session-specific data
 	EstimatedTokens int
@@ -485,6 +486,7 @@ func (db *DB) GetSessionURLsWithMetadata(sessionID int64) ([]URLWithMetadata, er
 			COALESCE(u.citation_count, 0),
 			COALESCE(u.code_block_count, 0),
 			COALESCE(u.top_keywords, '[]'),
+			COALESCE(u.meta_keywords, '[]'),
 			COALESCE(sr.estimated_tokens, 0)
 		FROM urls u
 		JOIN session_urls su ON u.url_id = su.url_id
@@ -503,6 +505,7 @@ func (db *DB) GetSessionURLsWithMetadata(sessionID int64) ([]URLWithMetadata, er
 	for rows.Next() {
 		var u URLWithMetadata
 		var topKeywordsJSON string
+		var metaKeywordsJSON string
 		var sanitizedOriginal sql.NullString
 
 		err := rows.Scan(
@@ -521,6 +524,7 @@ func (db *DB) GetSessionURLsWithMetadata(sessionID int64) ([]URLWithMetadata, er
 			&u.CitationCount,
 			&u.CodeBlockCount,
 			&topKeywordsJSON,
+			&metaKeywordsJSON,
 			&u.EstimatedTokens,
 		)
 		if err != nil {
@@ -533,6 +537,9 @@ func (db *DB) GetSessionURLsWithMetadata(sessionID int64) ([]URLWithMetadata, er
 
 		// Parse top_keywords JSON: ["error:97", "type:163", ...]
 		u.TopKeywords = parseTopKeywordsForDisplay(topKeywordsJSON, 5)
+
+		// Parse meta_keywords JSON: ["keyword1", "keyword2", ...]
+		u.MetaKeywords = parseMetaKeywordsForDisplay(metaKeywordsJSON, 5)
 
 		urls = append(urls, u)
 	}
@@ -571,6 +578,37 @@ func parseTopKeywordsForDisplay(jsonStr string, limit int) []string {
 		colonIdx := strings.Index(part, ":")
 		if colonIdx > 0 {
 			keyword := part[:colonIdx]
+			keywords = append(keywords, keyword)
+		}
+	}
+
+	return keywords
+}
+
+// parseMetaKeywordsForDisplay extracts top N meta keywords from JSON array
+func parseMetaKeywordsForDisplay(jsonStr string, limit int) []string {
+	// JSON format: ["keyword1", "keyword2", "keyword3", ...]
+	if jsonStr == "" || jsonStr == "[]" {
+		return []string{}
+	}
+
+	keywords := []string{}
+
+	// Remove brackets and quotes
+	jsonStr = strings.Trim(jsonStr, "[]")
+	if jsonStr == "" {
+		return []string{}
+	}
+
+	parts := strings.Split(jsonStr, ",")
+	for i, part := range parts {
+		if i >= limit {
+			break
+		}
+
+		// Remove quotes: "keyword" -> keyword
+		keyword := strings.Trim(part, "\" ")
+		if keyword != "" {
 			keywords = append(keywords, keyword)
 		}
 	}

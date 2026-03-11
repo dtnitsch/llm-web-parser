@@ -75,9 +75,11 @@ func UrlsAction(c *cli.Context) error {
 			fmt.Printf("    %s | %s | conf:%.1f\n",
 				u.ContentType, codeFlag, u.DetectionConfidence)
 
-			// Line 3: Keywords (if available)
-			if len(u.TopKeywords) > 0 {
-				fmt.Printf("    Keywords: %s\n", strings.Join(u.TopKeywords, ", "))
+			// Line 3: Keywords (prefer meta keywords, fallback to extracted)
+			if len(u.MetaKeywords) > 0 {
+				fmt.Printf("    Meta keywords: %s (from site)\n", strings.Join(u.MetaKeywords, ", "))
+			} else if len(u.TopKeywords) > 0 {
+				fmt.Printf("    Keywords: %s (extracted)\n", strings.Join(u.TopKeywords, ", "))
 			}
 
 			fmt.Println() // Blank line between URLs
@@ -99,12 +101,20 @@ func UrlsAction(c *cli.Context) error {
 
 			// Format: " #55  docs/code  https://...  →  keywords"
 			//         " #56            https://...  →  keywords"
-			if len(u.TopKeywords) > 0 {
+			// Prefer meta keywords (author intent), fallback to extracted keywords
+			var keywords []string
+			if len(u.MetaKeywords) > 0 {
+				keywords = u.MetaKeywords
+			} else {
+				keywords = u.TopKeywords
+			}
+
+			if len(keywords) > 0 {
 				fmt.Printf(" #%-3d  %-10s  %s  →  %s\n",
 					u.URLID,
 					typeLabel,
 					u.URL,
-					strings.Join(u.TopKeywords, ", "))
+					strings.Join(keywords, ", "))
 			} else {
 				fmt.Printf(" #%-3d  %-10s  %s\n",
 					u.URLID,

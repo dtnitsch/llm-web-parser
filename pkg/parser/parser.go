@@ -22,6 +22,9 @@ func (p *Parser) Parse(req models.ParseRequest) (*models.Page, error) {
 		return nil, fmt.Errorf("failed to parse URL: %w", err)
 	}
 
+	// Extract meta keywords from HTML early (fast operation)
+	metaKeywords := extractMetaKeywords(req.HTML)
+
 	readParser := readability.NewParser()
 	article, err := readParser.Parse(strings.NewReader(req.HTML), parsedURL)
 	if err != nil {
@@ -63,6 +66,11 @@ func (p *Parser) Parse(req models.ParseRequest) (*models.Page, error) {
 		}
 
 		page.ComputeMetadata()
+	}
+
+	// Populate meta keywords (extracted from HTML)
+	if len(metaKeywords) > 0 {
+		page.Metadata.MetaKeywords = metaKeywords
 	}
 
 	return page, nil
@@ -531,3 +539,41 @@ func cleanCodeBlock(s *goquery.Selection) string {
 	return text
 }
 
+// extractMetaKeywords extracts keywords from HTML meta tags
+// Looks for: <meta name="keywords" content="react, hooks, components">
+// Returns: ["react", "hooks", "components"]
+func extractMetaKeywords(html string) []string {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		return nil
+	}
+
+	var keywords []string
+
+	// Try <meta name="keywords">
+	doc.Find("meta[name='keywords'], meta[name='Keywords'], meta[property='keywords']").Each(func(_ int, s *goquery.Selection) {
+		if content, exists := s.Attr("content"); exists {
+			// Split by comma and trim whitespace
+			for _, kw := range strings.Split(content, ",") {
+				trimmed := strings.TrimSpace(kw)
+				if trimmed != "" {
+					keywords = append(keywords, trimmed)
+				}
+			}
+		}
+	})
+
+	// Also try article:tag (common on blog sites)
+	if len(keywords) == 0 {
+		doc.Find("meta[property='article:tag']").Each(func(_ int, s *goquery.Selection) {
+			if content, exists := s.Attr("content"); exists {
+				trimmed := strings.TrimSpace(content)
+				if trimmed != "" {
+					keywords = append(keywords, trimmed)
+				}
+			}
+		})
+	}
+
+	return keywords
+}

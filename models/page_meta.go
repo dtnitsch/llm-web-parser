@@ -8,6 +8,10 @@ type PageMetadata struct{
 	Language       string  `json:"language"`                  // ISO-639-1 if possible (e.g. "en")
 	LanguageConfidence float64 `json:"language_confidence,omitempty"`
 
+	// Keywords
+	MetaKeywords []string `json:"meta_keywords,omitempty"` // From HTML <meta name="keywords"> tags (author-supplied)
+	TopKeywords  []string `json:"top_keywords,omitempty"`  // Top N extracted keywords from word frequency analysis
+
 	// Size & cost signals
 	WordCount        int     `json:"word_count"`
 	EstimatedReadMin float64 `json:"estimated_read_min"`

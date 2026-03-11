@@ -35,6 +35,18 @@ func formatKeywordsAsJSON(counts map[string]int, limit int) string {
 	return string(jsonBytes)
 }
 
+// formatMetaKeywordsAsJSON formats meta keywords as JSON array for database storage.
+func formatMetaKeywordsAsJSON(keywords []string) string {
+	if len(keywords) == 0 {
+		return ""
+	}
+	jsonBytes, err := json.Marshal(keywords)
+	if err != nil {
+		return ""
+	}
+	return string(jsonBytes)
+}
+
 // formatWordCountsSorted formats word counts as sorted plain text.
 // Format: "word:count\n" sorted by count descending for easy parsing.
 func formatWordCountsSorted(counts map[string]int) string {
@@ -131,6 +143,21 @@ func processHTML(id int, logger *slog.Logger, url string, rawHTML []byte, manage
 	wordCounts := mapreduce.Map(page.ToPlainText(), a)
 	result.WordCounts = wordCounts
 
+	// Add top keywords to metadata (for YAML artifact)
+	if len(wordCounts) > 0 {
+		topKeywords := mapreduce.TopKeywords(wordCounts, 25)
+		// Convert from ["word:count", ...] to ["word", ...]
+		keywordNames := make([]string, 0, len(topKeywords))
+		for _, kw := range topKeywords {
+			// Format is "word:count", extract just the word
+			parts := strings.Split(kw, ":")
+			if len(parts) > 0 {
+				keywordNames = append(keywordNames, parts[0])
+			}
+		}
+		page.Metadata.TopKeywords = keywordNames
+	}
+
 	// Marshal to YAML for generic.yaml
 	yamlData, marshalErr := yaml.Marshal(page)
 	if marshalErr != nil {
@@ -184,6 +211,7 @@ func processHTML(id int, logger *slog.Logger, url string, rawHTML []byte, manage
 			CitationCount:       page.Metadata.CitationCount,
 			CodeBlockCount:      page.Metadata.CodeBlockCount,
 			TopKeywords:         db.NewNullString(formatKeywordsAsJSON(result.WordCounts, 25)),
+			MetaKeywords:        db.NewNullString(formatMetaKeywordsAsJSON(page.Metadata.MetaKeywords)),
 		}
 		if err := database.UpdateURLContentType(urlID, contentInfo); err != nil {
 			logger.Warn("Failed to update content type metadata", "url", url, "error", err)

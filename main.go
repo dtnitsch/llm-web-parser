@@ -231,13 +231,36 @@ Run 'llm-web-parser fetch' (no args) for examples.`,
 						Name:      "session",
 						Usage:     "Show session details (defaults to latest)",
 						ArgsUsage: "[session_id]",
-						Action:    db.SessionAction,
+						Description: `EXAMPLES:
+   llm-web-parser db session          # Latest session
+   llm-web-parser db session 5        # Session 5 (positional)
+   llm-web-parser db session --session 5  # Session 5 (flag)
+
+NOTE: Use --session 5 (space, not equals)`,
+						Flags: []cli.Flag{
+							&cli.IntFlag{
+								Name:  "session",
+								Usage: "Session ID to show (alternative to positional arg)",
+							},
+						},
+						Action: db.SessionAction,
 					},
 					{
 						Name:      "get",
 						Usage:     "Retrieve session content (defaults to latest)",
 						ArgsUsage: "[session_id]",
+						Description: `EXAMPLES:
+   llm-web-parser db get --file=details      # Latest session
+   llm-web-parser db get 5                   # Session 5 (positional)
+   llm-web-parser db get --session 5         # Session 5 (flag)
+   llm-web-parser db get --session 5 --file=index
+
+NOTE: Use --session 5 (space, not equals)`,
 						Flags: []cli.Flag{
+							&cli.IntFlag{
+								Name:  "session",
+								Usage: "Session ID to retrieve (alternative to positional arg)",
+							},
 							&cli.StringFlag{
 								Name:  "file",
 								Usage: "Which file to show: index, details, failed (default: details)",
@@ -250,7 +273,18 @@ Run 'llm-web-parser fetch' (no args) for examples.`,
 						Name:      "urls",
 						Usage:     "Show URLs for a session (defaults to latest)",
 						ArgsUsage: "[session_id]",
+						Description: `EXAMPLES:
+   llm-web-parser db urls             # Latest session
+   llm-web-parser db urls 7           # Session 7 (positional)
+   llm-web-parser db urls --session 7 # Session 7 (flag)
+   llm-web-parser db urls --session 7 --verbose
+
+NOTE: Use --session 7 (space, not equals)`,
 						Flags: []cli.Flag{
+							&cli.IntFlag{
+								Name:  "session",
+								Usage: "Session ID to show URLs for (alternative to positional arg)",
+							},
 							&cli.BoolFlag{
 								Name:  "sanitized",
 								Usage: "Show only URLs that were auto-cleaned",

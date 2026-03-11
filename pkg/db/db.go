@@ -58,6 +58,12 @@ func Open() (*DB, error) {
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
+	// Run migrations for existing databases
+	if err := db.runMigrations(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
+	}
+
 	return db, nil
 }
 
@@ -89,4 +95,41 @@ func (db *DB) Path() string {
 func (db *DB) InitSchema() error {
 	_, err := db.Exec(schema)
 	return err
+}
+
+// runMigrations runs schema migrations for existing databases
+func (db *DB) runMigrations() error {
+	// Migration 1: Add meta_keywords column (2026-03-10)
+	// Check if column exists by querying table info
+	var hasMetaKeywords bool
+	rows, err := db.Query("PRAGMA table_info(urls)")
+	if err != nil {
+		return fmt.Errorf("failed to check table schema: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name string
+		var dataType string
+		var notNull int
+		var dfltValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("failed to scan column info: %w", err)
+		}
+		if name == "meta_keywords" {
+			hasMetaKeywords = true
+			break
+		}
+	}
+
+	if !hasMetaKeywords {
+		_, err = db.Exec("ALTER TABLE urls ADD COLUMN meta_keywords TEXT")
+		if err != nil {
+			return fmt.Errorf("failed to add meta_keywords column: %w", err)
+		}
+	}
+
+	return nil
 }

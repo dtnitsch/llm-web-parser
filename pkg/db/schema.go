@@ -37,7 +37,10 @@ CREATE TABLE IF NOT EXISTS urls (
     code_block_count INTEGER DEFAULT 0,
 
     -- Top keywords as JSON object: {"word1": count1, "word2": count2, ...}
-    top_keywords TEXT
+    top_keywords TEXT,
+
+    -- Meta keywords as JSON array: ["keyword1", "keyword2", ...] from HTML <meta> tags
+    meta_keywords TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_urls_domain ON urls(domain);
