@@ -32,40 +32,14 @@ func UrlsAction(c *cli.Context) error {
 		return nil
 	}
 
-	sanitizedOnly := c.Bool("sanitized")
 	verbose := c.Bool("verbose")
 
-	if sanitizedOnly {
-		// Show only sanitized URLs (existing behavior)
-		sanitizedURLs := []dbpkg.URLWithMetadata{}
-		for _, u := range urls {
-			if u.WasSanitized {
-				sanitizedURLs = append(sanitizedURLs, u)
-			}
-		}
-
-		if len(sanitizedURLs) == 0 {
-			fmt.Printf("Session: %d\n\n", sessionID)
-			fmt.Printf("No URLs were auto-cleaned in this session\n")
-			return nil
-		}
-
-		fmt.Printf("Session: %d\n\n", sessionID)
-		fmt.Printf("Auto-cleaned URLs:\n\n")
-		for i, u := range sanitizedURLs {
-			fmt.Printf("%2d. [#%d] Original: %s\n", i+1, u.URLID, u.OriginalURL)
-			fmt.Printf("          Cleaned:  %s\n\n", u.URL)
-		}
-	} else if verbose {
+	if verbose {
 		// Verbose mode: Show all URLs with rich metadata (3-line format)
 		fmt.Printf("Session: %d\n\n", sessionID)
 		for i, u := range urls {
-			// Line 1: URL with sanitization indicator
-			if u.WasSanitized {
-				fmt.Printf("%2d. [#%d] %s (cleaned)\n", i+1, u.URLID, u.URL)
-			} else {
-				fmt.Printf("%2d. [#%d] %s\n", i+1, u.URLID, u.URL)
-			}
+			// Line 1: URL ID and URL
+			fmt.Printf("%2d. [#%d] %s\n", i+1, u.URLID, u.URL)
 
 			// Line 2: Metadata - content type, code flag, confidence
 			codeFlag := "no_code"

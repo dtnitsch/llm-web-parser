@@ -1,10 +1,12 @@
 package db
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/dtnitsch/llm-web-parser/models"
+	"gopkg.in/yaml.v3"
 )
 
 // countTruthyMetadata counts non-empty/non-zero/non-false metadata fields
@@ -194,4 +196,300 @@ func generateNoResultsMessage(filterType string, filterValue string, page *model
 	sb.WriteString(fmt.Sprintf("  llm-web-parser db show --outline %d  # Document structure\n", urlID))
 
 	return sb.String()
+}
+
+// convertToMarkdown converts a Page to markdown format
+func convertToMarkdown(page *models.Page, urlID int64) string {
+	var sb strings.Builder
+
+	// Header
+	sb.WriteString(fmt.Sprintf("# %s\n\n", page.Title))
+	sb.WriteString(fmt.Sprintf("**URL:** %s  \n", page.URL))
+	sb.WriteString(fmt.Sprintf("**URL ID:** %d\n\n", urlID))
+
+	// Keywords if available
+	if len(page.Metadata.MetaKeywords) > 0 {
+		display := page.Metadata.MetaKeywords
+		if len(display) > 5 {
+			display = display[:5]
+		}
+		sb.WriteString(fmt.Sprintf("**Meta Keywords:** %s (from site)  \n", strings.Join(display, ", ")))
+	}
+	if len(page.Metadata.TopKeywords) > 0 {
+		display := page.Metadata.TopKeywords
+		if len(display) > 5 {
+			display = display[:5]
+		}
+		sb.WriteString(fmt.Sprintf("**Top Keywords:** %s (extracted)  \n", strings.Join(display, ", ")))
+	}
+
+	if len(page.Metadata.MetaKeywords) > 0 || len(page.Metadata.TopKeywords) > 0 {
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("---\n\n")
+
+	// Content blocks (FlatContent mode)
+	if len(page.FlatContent) > 0 {
+		for _, block := range page.FlatContent {
+			switch block.Type {
+			case "h1":
+				sb.WriteString(fmt.Sprintf("# %s\n\n", block.Text))
+			case "h2":
+				sb.WriteString(fmt.Sprintf("## %s\n\n", block.Text))
+			case "h3":
+				sb.WriteString(fmt.Sprintf("### %s\n\n", block.Text))
+			case "h4":
+				sb.WriteString(fmt.Sprintf("#### %s\n\n", block.Text))
+			case "h5":
+				sb.WriteString(fmt.Sprintf("##### %s\n\n", block.Text))
+			case "h6":
+				sb.WriteString(fmt.Sprintf("###### %s\n\n", block.Text))
+			case "code", "pre":
+				sb.WriteString(fmt.Sprintf("```\n%s\n```\n\n", block.Text))
+			case "li":
+				sb.WriteString(fmt.Sprintf("- %s\n", block.Text))
+			case "p":
+				sb.WriteString(fmt.Sprintf("%s\n\n", block.Text))
+			default:
+				sb.WriteString(fmt.Sprintf("%s\n\n", block.Text))
+			}
+
+			// Add table if present
+			if block.Table != nil {
+				sb.WriteString(convertTableToMarkdown(block.Table))
+				sb.WriteString("\n")
+			}
+		}
+	} else {
+		// Hierarchical Content mode
+		var processSection func(section models.Section, level int)
+		processSection = func(section models.Section, level int) {
+			// Heading
+			if section.Heading != nil && section.Heading.Text != "" {
+				hashes := strings.Repeat("#", level)
+				sb.WriteString(fmt.Sprintf("%s %s\n\n", hashes, section.Heading.Text))
+			}
+
+			// Blocks
+			for _, block := range section.Blocks {
+				switch block.Type {
+				case "code", "pre":
+					sb.WriteString(fmt.Sprintf("```\n%s\n```\n\n", block.Text))
+				case "li":
+					sb.WriteString(fmt.Sprintf("- %s\n", block.Text))
+				case "p":
+					sb.WriteString(fmt.Sprintf("%s\n\n", block.Text))
+				default:
+					sb.WriteString(fmt.Sprintf("%s\n\n", block.Text))
+				}
+
+				// Add table if present
+				if block.Table != nil {
+					sb.WriteString(convertTableToMarkdown(block.Table))
+					sb.WriteString("\n")
+				}
+			}
+
+			// Children sections
+			for _, child := range section.Children {
+				processSection(child, level+1)
+			}
+		}
+
+		for _, section := range page.Content {
+			processSection(section, 1)
+		}
+	}
+
+	return sb.String()
+}
+
+// convertTableToMarkdown converts a table to markdown format
+func convertTableToMarkdown(table *models.Table) string {
+	if table == nil || len(table.Headers) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+
+	// Headers
+	sb.WriteString("| " + strings.Join(table.Headers, " | ") + " |\n")
+
+	// Separator
+	sep := make([]string, len(table.Headers))
+	for i := range sep {
+		sep[i] = "---"
+	}
+	sb.WriteString("| " + strings.Join(sep, " | ") + " |\n")
+
+	// Rows
+	for _, row := range table.Rows {
+		// Pad row to match header count
+		paddedRow := make([]string, len(table.Headers))
+		copy(paddedRow, row)
+		for i := len(row); i < len(table.Headers); i++ {
+			paddedRow[i] = ""
+		}
+		sb.WriteString("| " + strings.Join(paddedRow, " | ") + " |\n")
+	}
+
+	return sb.String()
+}
+
+// convertToCSV converts a Page to CSV format
+func convertToCSV(page *models.Page, urlID int64) string {
+	var sb strings.Builder
+
+	// CSV Header
+	sb.WriteString("url_id,url,type,text,confidence\n")
+
+	// Content blocks (FlatContent mode)
+	if len(page.FlatContent) > 0 {
+		for _, block := range page.FlatContent {
+			// Escape quotes in text and URL
+			text := strings.ReplaceAll(block.Text, "\"", "\"\"")
+			url := strings.ReplaceAll(page.URL, "\"", "\"\"")
+
+			sb.WriteString(fmt.Sprintf("%d,\"%s\",%s,\"%s\",%.2f\n",
+				urlID, url, block.Type, text, block.Confidence))
+		}
+	} else {
+		// Hierarchical Content mode - flatten sections
+		var processSection func(section models.Section)
+		processSection = func(section models.Section) {
+			// Add heading as a block
+			if section.Heading != nil && section.Heading.Text != "" {
+				text := strings.ReplaceAll(section.Heading.Text, "\"", "\"\"")
+				url := strings.ReplaceAll(page.URL, "\"", "\"\"")
+				sb.WriteString(fmt.Sprintf("%d,\"%s\",%s,\"%s\",%.2f\n",
+					urlID, url, section.Heading.Type, text, section.Heading.Confidence))
+			}
+
+			// Add blocks
+			for _, block := range section.Blocks {
+				text := strings.ReplaceAll(block.Text, "\"", "\"\"")
+				url := strings.ReplaceAll(page.URL, "\"", "\"\"")
+				sb.WriteString(fmt.Sprintf("%d,\"%s\",%s,\"%s\",%.2f\n",
+					urlID, url, block.Type, text, block.Confidence))
+			}
+
+			// Process children
+			for _, child := range section.Children {
+				processSection(child)
+			}
+		}
+
+		for _, section := range page.Content {
+			processSection(section)
+		}
+	}
+
+	return sb.String()
+}
+// displayGroupedGrep displays grep results grouped by sub-pattern when pattern contains |
+func displayGroupedGrep(page *models.Page, pattern string, context int, urlID int64, outputFormat string) error {
+	// Split pattern by | to get individual sub-patterns
+	subPatterns := strings.Split(pattern, "|")
+
+	// Track if any matches found across all patterns
+	totalMatches := 0
+
+	for _, subPattern := range subPatterns {
+		subPattern = strings.TrimSpace(subPattern)
+		if subPattern == "" {
+			continue
+		}
+
+		// Filter by this sub-pattern
+		filtered, err := filterByGrep(page, subPattern, context)
+		if err != nil {
+			return fmt.Errorf("error filtering by pattern '%s': %w", subPattern, err)
+		}
+
+		// Count matches
+		matchCount := 0
+		if len(filtered.FlatContent) > 0 {
+			matchCount = len(filtered.FlatContent)
+		} else {
+			// Count blocks in hierarchical content
+			var countBlocks func(sections []models.Section) int
+			countBlocks = func(sections []models.Section) int {
+				count := 0
+				for _, section := range sections {
+					count += len(section.Blocks)
+					count += countBlocks(section.Children)
+				}
+				return count
+			}
+			matchCount = countBlocks(filtered.Content)
+		}
+
+		totalMatches += matchCount
+
+		// Display header
+		matchWord := "match"
+		if matchCount != 1 {
+			matchWord = "matches"
+		}
+		fmt.Printf("\n=== %s (%d %s) ===\n", subPattern, matchCount, matchWord)
+
+		if matchCount == 0 {
+			continue
+		}
+
+		// Display matches based on format
+		if outputFormat == "json" {
+			// JSON format
+			outputStruct := struct {
+				Pattern     string                 `json:"pattern"`
+				Matches     int                    `json:"matches"`
+				URLID       int64                  `json:"url_id"`
+				URL         string                 `json:"url"`
+				Title       string                 `json:"title"`
+				Content     []models.Section       `json:"content,omitempty"`
+				FlatContent []models.ContentBlock  `json:"flat_content,omitempty"`
+			}{
+				Pattern:     subPattern,
+				Matches:     matchCount,
+				URLID:       urlID,
+				URL:         filtered.URL,
+				Title:       filtered.Title,
+				Content:     filtered.Content,
+				FlatContent: filtered.FlatContent,
+			}
+			data, err := json.MarshalIndent(&outputStruct, "", "  ")
+			if err != nil {
+				return fmt.Errorf("failed to marshal JSON: %w", err)
+			}
+			fmt.Println(string(data))
+		} else {
+			// YAML format (default)
+			outputStruct := struct {
+				Pattern     string                 `yaml:"pattern"`
+				Matches     int                    `yaml:"matches"`
+				URL         string                 `yaml:"url"`
+				Title       string                 `yaml:"title"`
+				Content     []models.Section       `yaml:"content,omitempty"`
+				FlatContent []models.ContentBlock  `yaml:"flatcontent,omitempty"`
+			}{
+				Pattern:     subPattern,
+				Matches:     matchCount,
+				URL:         filtered.URL,
+				Title:       filtered.Title,
+				Content:     filtered.Content,
+				FlatContent: filtered.FlatContent,
+			}
+			data, err := yaml.Marshal(&outputStruct)
+			if err != nil {
+				return fmt.Errorf("failed to marshal YAML: %w", err)
+			}
+			fmt.Print(string(data))
+		}
+	}
+
+	// Summary at the end
+	fmt.Printf("\n---\nTotal: %d matches across %d patterns\n", totalMatches, len(subPatterns))
+
+	return nil
 }

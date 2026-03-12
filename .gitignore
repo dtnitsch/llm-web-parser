@@ -18,6 +18,9 @@ llm-web-parser*
 
 *.db
 
+# Per-project config
+.lwp/
+
 # Test binary, built with `go test -c`
 *.test
 

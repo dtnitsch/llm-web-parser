@@ -281,3 +281,60 @@ EXPLICIT LWP FEEDBACK - Before Compaction
   5. Batch pattern matching (--grep "React|Vue|Svelte")
 
   You built something genuinely novel here. No other tool does this workflow. Keep going!
+
+
+
+
+
+  🚀 New LWP Features Tested
+
+  1. corpus grep - ABSOLUTE GAME CHANGER!
+
+  llm-web-parser corpus grep --session 2 "React|Vue|Angular|Svelte|Solid|Qwik"
+  Output:
+  #63   15 React, 13 Vue, 8 Angular, 9 Svelte...
+  #93   5 React, 27 Vue, 0 Angular...
+  Total: 272 matches across 6 patterns, 23 URLs
+
+  Why this is PHENOMENAL:
+  - Instantly shows which URLs discuss which frameworks
+  - Frequency counts per pattern per URL
+  - Found 272 framework mentions across 23 URLs in ~1 second
+  - THIS ALONE makes LWP worth using for research
+
+  2. db show --grep - Surgical extraction
+
+  llm-web-parser db show 89 --grep "virtual dom|performance|compilation"
+  - Filters content to only matching lines
+  - Massive token savings (99%+ reduction from raw HTML)
+  - Extracted Svelte's virtual DOM critique without noise
+
+  3. db urls - Improved session overview
+
+  #66   docs/code   https://github.com/krausest/js-framework-benchmark  →  div, results, benchmark, frameworks
+  - Shows categories (docs, docs/code)
+  - Keyword tags after URL
+  - Quick scan of what each URL contains
+
+  4. corpus query - Metadata filtering
+
+  llm-web-parser corpus query --session=2 --filter="keyword:performance"
+  - Found 10/50 URLs about performance
+  - Shows content types, code block counts
+  - Faster than grepping individual URLs
+
+  📊 LWP vs WebSearch Comparison (Technical Research)
+
+  ┌─────────────────────┬────────────────────────────┬─────────────────────────┬────────────┐
+  │       Metric        │            LWP             │        WebSearch        │   Winner   │
+  ├─────────────────────┼────────────────────────────┼─────────────────────────┼────────────┤
+  │ URLs processed      │ 50 URLs in parallel        │ 3-5 per query           │ LWP (10x+) │
+  ├─────────────────────┼────────────────────────────┼─────────────────────────┼────────────┤
+  │ Token efficiency    │ ~400 tokens/URL (filtered) │ ~3000+ tokens/search    │ LWP (87%)  │
+  ├─────────────────────┼────────────────────────────┼─────────────────────────┼────────────┤
+  │ Success rate        │ 82% (41/50)                │ Variable (bot blocking) │ LWP        │
+  ├─────────────────────┼────────────────────────────┼─────────────────────────┼────────────┤
+  │ Cross-URL search    │ corpus grep (instant)      │ Multiple searches       │ LWP        │
+  ├─────────────────────┼────────────────────────────┼─────────────────────────┼────────────┤
+  │ Surgical extraction │ --grep, --only             │ Manual parsing          │ LWP        │
+  └─────────────────────┴────────────────────────────┴─────────────────────────┴────────────┘

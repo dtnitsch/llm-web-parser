@@ -244,29 +244,82 @@ func filterByGrep(page *models.Page, pattern string, context int) (*models.Page,
 		return nil, fmt.Errorf("invalid regex pattern: %w", err)
 	}
 
-	filtered := &models.Page{
-		URL:   page.URL,
-		Title: page.Title,
-		FlatContent: make([]models.ContentBlock, 0),
-	}
+	// Handle FlatContent mode (cheap/minimal/wordcount)
+	if len(page.FlatContent) > 0 {
+		filtered := &models.Page{
+			URL:         page.URL,
+			Title:       page.Title,
+			Metadata:    page.Metadata,
+			FlatContent: make([]models.ContentBlock, 0),
+		}
 
-	// Find all matching indices
-	matches := make(map[int]bool)
-	for i, block := range page.FlatContent {
-		if re.MatchString(block.Text) {
-			// Mark this block and context blocks
-			for j := i - context; j <= i+context; j++ {
-				if j >= 0 && j < len(page.FlatContent) {
-					matches[j] = true
+		// Find all matching indices
+		matches := make(map[int]bool)
+		for i, block := range page.FlatContent {
+			if re.MatchString(block.Text) {
+				// Mark this block and context blocks
+				for j := i - context; j <= i+context; j++ {
+					if j >= 0 && j < len(page.FlatContent) {
+						matches[j] = true
+					}
 				}
 			}
 		}
+
+		// Add all matched blocks (in order)
+		for i, block := range page.FlatContent {
+			if matches[i] {
+				filtered.FlatContent = append(filtered.FlatContent, block)
+			}
+		}
+
+		return filtered, nil
 	}
 
-	// Add all matched blocks (in order)
-	for i, block := range page.FlatContent {
-		if matches[i] {
-			filtered.FlatContent = append(filtered.FlatContent, block)
+	// Handle hierarchical Content mode (full-parse)
+	filtered := &models.Page{
+		URL:      page.URL,
+		Title:    page.Title,
+		Metadata: page.Metadata,
+		Content:  make([]models.Section, 0),
+	}
+
+	// Recursively filter sections
+	var filterSection func(section models.Section) *models.Section
+	filterSection = func(section models.Section) *models.Section {
+		filteredSection := models.Section{
+			ID:       section.ID,
+			Heading:  section.Heading,
+			Level:    section.Level,
+			Blocks:   make([]models.ContentBlock, 0),
+			Children: make([]models.Section, 0),
+		}
+
+		// Check blocks for matches
+		for _, block := range section.Blocks {
+			if re.MatchString(block.Text) {
+				filteredSection.Blocks = append(filteredSection.Blocks, block)
+			}
+		}
+
+		// Recursively filter children
+		for _, child := range section.Children {
+			if filtered := filterSection(child); filtered != nil {
+				filteredSection.Children = append(filteredSection.Children, *filtered)
+			}
+		}
+
+		// Only include section if it has matching content
+		if len(filteredSection.Blocks) > 0 || len(filteredSection.Children) > 0 {
+			return &filteredSection
+		}
+
+		return nil
+	}
+
+	for _, section := range page.Content {
+		if filteredSec := filterSection(section); filteredSec != nil {
+			filtered.Content = append(filtered.Content, *filteredSec)
 		}
 	}
 

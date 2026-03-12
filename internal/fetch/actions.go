@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dtnitsch/llm-web-parser/internal/common"
+	internaldb "github.com/dtnitsch/llm-web-parser/internal/db"
 	"github.com/dtnitsch/llm-web-parser/models"
 	"github.com/dtnitsch/llm-web-parser/pkg/artifact_manager"
 	"github.com/dtnitsch/llm-web-parser/pkg/db"
@@ -305,6 +306,13 @@ func FetchAction(c *cli.Context) error {
 
 		// Print simplified stats to stdout
 		fmt.Printf("Session %d: %d/%d URLs successful\nResults: %s\n", sessionID, successCount, len(config.URLs), sessionDir)
+
+		// Auto-switch active session to the new session
+		if err := internaldb.SetActiveSession(sessionID); err != nil {
+			logger.Warn("Failed to set active session", "session_id", sessionID, "error", err)
+		} else {
+			fmt.Printf("Active session: %d\n", sessionID)
+		}
 
 		// Show quick start commands for corpus API
 		if successCount > 0 {

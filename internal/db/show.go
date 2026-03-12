@@ -134,6 +134,14 @@ func ShowAction(c *cli.Context) error {
 
 	// Apply grep filter
 	if grepPattern != "" {
+		// Check if pattern contains | (OR operator) - if so, group by match
+		if strings.Contains(grepPattern, "|") {
+			// Grouped grep mode: show results organized by sub-pattern
+			err := displayGroupedGrep(&originalPage, grepPattern, grepContext, urlID, outputFormat)
+			return err
+		}
+
+		// Regular grep mode: single pattern
 		filtered, err := filterByGrep(&page, grepPattern, grepContext)
 		if err != nil {
 			return err
@@ -175,16 +183,28 @@ func ShowAction(c *cli.Context) error {
 
 	// Re-marshal based on requested format
 	var output []byte
-	if outputFormat == "json" {
+	if outputFormat == "markdown" {
+		// Convert to markdown format
+		output = []byte(convertToMarkdown(&page, urlID))
+		fmt.Print(string(output))
+		return nil
+	} else if outputFormat == "csv" {
+		// Convert to CSV format
+		output = []byte(convertToCSV(&page, urlID))
+		fmt.Print(string(output))
+		return nil
+	} else if outputFormat == "json" {
 		if metadataToShow != nil {
 			// With metadata
 			outputStruct := struct {
+				URLID       int64                  `json:"url_id"`
 				URL         string                 `json:"url"`
 				Title       string                 `json:"title"`
 				Content     []models.Section       `json:"content,omitempty"`
 				FlatContent []models.ContentBlock  `json:"flat_content,omitempty"`
 				Metadata    interface{}            `json:"metadata,omitempty"`
 			}{
+				URLID:       urlID,
 				URL:         page.URL,
 				Title:       page.Title,
 				Content:     page.Content,
@@ -195,11 +215,13 @@ func ShowAction(c *cli.Context) error {
 		} else {
 			// Without metadata
 			outputStruct := struct {
+				URLID       int64                  `json:"url_id"`
 				URL         string                 `json:"url"`
 				Title       string                 `json:"title"`
 				Content     []models.Section       `json:"content,omitempty"`
 				FlatContent []models.ContentBlock  `json:"flat_content,omitempty"`
 			}{
+				URLID:       urlID,
 				URL:         page.URL,
 				Title:       page.Title,
 				Content:     page.Content,
@@ -247,11 +269,32 @@ func ShowAction(c *cli.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to marshal content as YAML: %w", err)
 		}
+
+		// Print header with url_id and keywords for consistency with --outline
 		if onlyTypes != "" || grepPattern != "" {
 			fmt.Println("# YAML compact mode: Only non-null/non-default fields shown (filtered)")
 		} else {
 			fmt.Println("# YAML compact mode: Only non-null/non-default fields shown")
 		}
+		fmt.Printf("# url_id: %d\n", urlID)
+
+		// Show keywords if available
+		if len(page.Metadata.MetaKeywords) > 0 {
+			display := page.Metadata.MetaKeywords
+			if len(display) > 5 {
+				display = display[:5]
+			}
+			fmt.Printf("# meta_keywords: %s (from site)\n", strings.Join(display, ", "))
+		}
+		if len(page.Metadata.TopKeywords) > 0 {
+			display := page.Metadata.TopKeywords
+			if len(display) > 5 {
+				display = display[:5]
+			}
+			fmt.Printf("# top_keywords: %s (extracted)\n", strings.Join(display, ", "))
+		}
+		fmt.Println()
+
 		fmt.Print(string(output))
 
 		// Show metadata tip if no metadata flags used

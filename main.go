@@ -224,6 +224,10 @@ Run 'llm-web-parser fetch' (no args) for examples.`,
 								Usage: "Maximum number of sessions to show (0 = all)",
 								Value: 20,
 							},
+							&cli.BoolFlag{
+								Name:  "verbose",
+								Usage: "Show aggregated keywords, content types, and code percentage",
+							},
 						},
 						Action: db.SessionsAction,
 					},
@@ -286,10 +290,6 @@ NOTE: Use --session 7 (space, not equals)`,
 								Usage: "Session ID to show URLs for (alternative to positional arg)",
 							},
 							&cli.BoolFlag{
-								Name:  "sanitized",
-								Usage: "Show only URLs that were auto-cleaned",
-							},
-							&cli.BoolFlag{
 								Name:  "verbose",
 								Usage: "Show detailed 3-line format with metadata (default: compact 1-line format)",
 							},
@@ -316,6 +316,37 @@ NOTE: Use --session 7 (space, not equals)`,
 						Action: db.QuerySessionsAction,
 					},
 					{
+						Name:      "use",
+						Usage:     "Set or show active session (no args = show current)",
+						ArgsUsage: "[session_id|latest]",
+						Description: `EXAMPLES:
+   # Set active session
+   llm-web-parser db use 12
+
+   # Switch to latest session
+   llm-web-parser db use latest
+
+   # Show current active session
+   llm-web-parser db use
+
+   # Clear active session
+   llm-web-parser db use --clear
+
+Active session is stored in .lwp/config (per-project).
+When active, commands default to it instead of latest:
+   llm-web-parser db urls            # Uses active session
+   llm-web-parser db show 42         # Uses active session context
+
+NOTE: New fetches auto-switch to the new session.`,
+						Flags: []cli.Flag{
+							&cli.BoolFlag{
+								Name:  "clear",
+								Usage: "Clear active session",
+							},
+						},
+						Action: db.UseAction,
+					},
+					{
 						Name:      "show",
 						Usage:     "Show parsed content for a URL (by ID or URL)",
 						ArgsUsage: "<url_id_or_url>",
@@ -334,6 +365,14 @@ NOTE: Use --session 7 (space, not equals)`,
 
    # Batch retrieve (comma-separated IDs)
    llm-web-parser db show 42,43,44
+
+   # Export formats
+   llm-web-parser db show --format json 42        # JSON for jq processing
+   llm-web-parser db show --format markdown 42    # Markdown for notes/docs
+   llm-web-parser db show --format csv 42         # CSV for spreadsheets
+
+   # Complex filtering with jq
+   llm-web-parser db show --format json 42 | jq '.flatcontent[] | select(.type == "code")'
 
 NOTE: Use 'llm-web-parser db urls' to see URL IDs for the latest session.
 NOTE: Flags must come BEFORE the ID/URL (urfave/cli requirement).`,
@@ -365,7 +404,7 @@ NOTE: Flags must come BEFORE the ID/URL (urfave/cli requirement).`,
 							},
 							&cli.StringFlag{
 								Name:  "format",
-								Usage: "Output format: yaml (default) or json",
+								Usage: "Output format: yaml (default), json, markdown, or csv",
 								Value: "yaml",
 							},
 						},
@@ -413,6 +452,18 @@ NOTE: This shows the cached HTML. Use 'llm-web-parser db urls' to find URL IDs.`
 				},
 				Subcommands: []*cli.Command{
 					{
+						Name:      "grep",
+						Usage:     "Search across multiple URLs in a session",
+						ArgsUsage: "<pattern>",
+						Action:    corpusactions.GrepAction,
+						Flags: []cli.Flag{
+							&cli.IntFlag{Name: "session", Usage: "Session ID (default: active session, fallback to latest)"},
+							&cli.StringFlag{Name: "urls", Usage: "Comma-separated URL IDs or URLs (default: all URLs in session)"},
+							&cli.IntFlag{Name: "context", Usage: "Lines of context around matches (not yet implemented)"},
+							&cli.StringFlag{Name: "format", Value: "text", Usage: "Output format (text, json, yaml, csv)"},
+						},
+					},
+					{
 						Name:   "extract",
 						Usage:  "[WORKING] Extract and aggregate keywords from URLs",
 						Action: corpusactions.CorpusAction,
@@ -421,6 +472,7 @@ NOTE: This shows the cached HTML. Use 'llm-web-parser db urls' to find URL IDs.`
 							&cli.StringFlag{Name: "url-ids", Usage: "Comma-separated URL IDs (e.g., 1,3,5)"},
 							&cli.IntFlag{Name: "top", Value: 10, Usage: "Return top N keywords (0 for all)"},
 							&cli.IntFlag{Name: "limit", Value: 10, Usage: "Alias for --top", Hidden: true},
+							&cli.BoolFlag{Name: "verbose", Aliases: []string{"v"}, Usage: "Show full output (confidence, coverage, hints)"},
 							&cli.StringFlag{Name: "format", Value: "json", Usage: "Output format (json, yaml, csv)"},
 						},
 					},
@@ -551,7 +603,7 @@ Session management (sessions, session, get, urls):
   llm-web-parser db get --file=details             # Get latest session YAML (summary-details.yaml)
   llm-web-parser db get --file=index 5             # Get session 5 summary-index.yaml
   llm-web-parser db urls                            # Show URL IDs for latest session
-  llm-web-parser db urls 5 --sanitized              # Show cleaned URLs from session 5
+  llm-web-parser db urls --verbose                  # Show URLs with keywords and metadata
 
 URL content operations (show, raw, find-url):
   llm-web-parser db show 42                         # Show parsed content for URL ID 42

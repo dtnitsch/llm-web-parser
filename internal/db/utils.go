@@ -78,7 +78,18 @@ func GetSessionIDOrLatest(c *cli.Context, database *dbpkg.DB) (int64, error) {
 		return sessionID, nil
 	}
 
-	// 3. No session specified, use latest
+	// 3. Check for active session
+	activeSessionID := getActiveSessionFromConfig()
+	if activeSessionID > 0 {
+		// Verify it still exists
+		_, err := database.GetSessionByID(activeSessionID)
+		if err == nil {
+			return activeSessionID, nil
+		}
+		// Active session doesn't exist anymore, fall through to latest
+	}
+
+	// 4. No session specified, use latest
 	sessions, err := database.ListSessions(1)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get latest session: %w", err)
@@ -87,4 +98,24 @@ func GetSessionIDOrLatest(c *cli.Context, database *dbpkg.DB) (int64, error) {
 		return 0, fmt.Errorf("no sessions found. Run 'lwp fetch --urls \"...\"' first")
 	}
 	return sessions[0].SessionID, nil
+}
+
+// getActiveSessionFromConfig reads active session from .lwp/config
+func getActiveSessionFromConfig() int64 {
+	configPath := ".lwp/config"
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return 0
+	}
+
+	// Parse as YAML with active_session field
+	var config struct {
+		ActiveSession int64 `yaml:"active_session"`
+	}
+	_, err = fmt.Sscanf(string(data), "active_session: %d", &config.ActiveSession)
+	if err != nil {
+		return 0
+	}
+
+	return config.ActiveSession
 }
